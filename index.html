@@ -44,12 +44,13 @@
     let startTime = 0;
     let animationFrame;
 
+    // 確保全部資源載入後才初始化
     window.onload = function() {
         const btn = document.getElementById('record-btn');
         const status = document.getElementById('status');
 
         try {
-            // 自動偵測不同的 SDK 變數名稱
+            // 同時相容兩種 SDK 命名方式，確保在不同網路下都能抓到變數
             const Lib = window.ACRCloud || window.ACRCloudWebRTC;
             if (Lib) {
                 acrDetector = new Lib({
@@ -65,7 +66,7 @@
                 throw new Error("SDK 資源未定義");
             }
         } catch (e) {
-            status.innerText = "❌ 引擎連線異常，請檢查網路 DNS 設定";
+            status.innerText = "❌ 引擎連線異常，請重新整理網頁";
             console.error(e);
         }
     };
@@ -87,7 +88,7 @@
                 status.innerText = "❌ 無法辨識，請靠近音響再試一次";
             }
         } catch (err) {
-            status.innerText = "❌ 錯誤：" + err.message;
+            status.innerText = "❌ 辨識錯誤：" + err.message;
         } finally {
             btn.disabled = false;
         }
@@ -98,8 +99,11 @@
             const response = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title + ' ' + artist)}`);
             const data = await response.json();
             const track = data.find(t => t.syncedLyrics);
-            if (track) parseLRC(track.syncedLyrics, offset);
-            else document.getElementById('lyrics-container').innerHTML = `<p class="lyric-line active">找不到動態歌詞</p>`;
+            if (track) {
+                parseLRC(track.syncedLyrics, offset);
+            } else {
+                document.getElementById('lyrics-container').innerHTML = `<p class="lyric-line active">找不到動態歌詞</p>`;
+            }
         } catch (e) {
             document.getElementById('status').innerText = "❌ 歌詞搜尋失敗";
         }
@@ -142,17 +146,7 @@
 </script>
 </body>
 </html>
-                                                                                                                                        btn.onclick = startRecognition;
-                                                                                                                                                                                                                                                                                                                                                                                                        } else {
-                                                                                                                                                                                                                                                                                                                                                                                                                        throw new Error("SDK 載入失敗");
-                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                            } catch (e) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                        status.innerText = "❌ 辨識引擎載入錯誤，請重新整理頁面";
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                    console.error(e);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                };
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    async function startRecognition() {
+                                                                                                                  async function startRecognition() {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             const btn = document.getElementById('record-btn');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     const status = document.getElementById('status');
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
