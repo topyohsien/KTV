@@ -15,49 +15,16 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
-
-        /* 頂部區域 */
-        header {
-            padding: 20px; text-align: center;
-            background: linear-gradient(to bottom, rgba(30,30,30,0.9), transparent);
-            z-index: 100;
-        }
-        
-        .visualizer {
-            display: flex; justify-content: center; align-items: flex-end;
-            gap: 4px; height: 30px; margin-bottom: 15px;
-        }
+        header { padding: 20px; text-align: center; background: linear-gradient(to bottom, rgba(30,30,30,0.9), transparent); z-index: 100; }
+        .visualizer { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 30px; margin-bottom: 15px; }
         .bar { width: 4px; height: 4px; background: var(--primary); border-radius: 2px; transition: height 0.1s; }
-
-        button {
-            padding: 12px 30px; font-size: 16px; border-radius: 25px; border: none;
-            background: var(--primary); color: white; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); cursor: pointer;
-        }
+        button { padding: 12px 30px; font-size: 16px; border-radius: 25px; border: none; background: var(--primary); color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); cursor: pointer; }
         button:disabled { background: #444; color: #888; }
-
         #status { font-size: 13px; color: #aaa; margin-top: 10px; min-height: 1.2em; }
-
-        /* 歌詞視窗 */
-        #lyrics-window {
-            flex: 1; overflow-y: auto; position: relative;
-            mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
-            -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
-            scroll-behavior: smooth;
-            padding: 45vh 0; /* 讓第一句置中 */
-        }
+        #lyrics-window { flex: 1; overflow-y: auto; position: relative; mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); scroll-behavior: smooth; padding: 45vh 0; }
         #lyrics-window::-webkit-scrollbar { display: none; }
-
-        .lyric-line {
-            padding: 15px 20px; margin: 10px 0; text-align: center;
-            font-size: 1.3rem; opacity: 0.25; transition: all 0.4s;
-            transform: scale(0.9); word-break: break-all;
-        }
-        .lyric-line.active {
-            opacity: 1; color: var(--accent); font-size: 1.9rem;
-            font-weight: bold; transform: scale(1);
-            text-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
-        }
+        .lyric-line { padding: 15px 20px; margin: 10px 0; text-align: center; font-size: 1.3rem; opacity: 0.25; transition: all 0.4s; transform: scale(0.9); word-break: break-all; }
+        .lyric-line.active { opacity: 1; color: var(--accent); font-size: 1.9rem; font-weight: bold; transform: scale(1); text-shadow: 0 0 15px rgba(255, 255, 0, 0.4); }
     </style>
 </head>
 <body>
@@ -66,121 +33,17 @@
     <div class="visualizer" id="viz">
         <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
     </div>
-    <button id="record-btn" disabled>引擎初始化中...</button>
-    <div id="status">正在嘗試建立音訊連線...</div>
-</header>
-
-<div id="lyrics-window">
-                                                                                                                                                                                                                                                                                                                               if (result && result.status.code === 0) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const track = result.metadata.music[0];
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const title = track.title;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const artist = track.artists[0].name;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const playTime = track.play_offset_ms / 1000;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            status.innerText = `🎵 辨識成功：${title} - ${artist}`;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            await fetchLyrics(title, artist, playTime);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        } else {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        status.innerText = "❌ 無法辨識，請靠近音響再試一次";
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            } catch (err) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        status.innerText = "❌ 辨識發生錯誤：" + err.message;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                } finally {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            btn.disabled = false;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            async function fetchLyrics(title, artist, offset) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    try {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                const response = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title + ' ' + artist)}`);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const data = await response.json();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        const track = data.find(t => t.syncedLyrics);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    if (track) parseLRC(track.syncedLyrics, offset);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                else document.getElementById('lyrics-container').innerHTML = `<p class="lyric-line active">找不到歌詞</p>`;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        } catch (e) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    document.getElementById('status').innerText = "❌ 歌詞搜尋失敗";
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
-
-                                                                                                                                                                                                                                                                                                                   <!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI KTV 歌詞同步助手</title>
-    
-    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
-    <script>var vConsole = new window.VConsole();</script>
-
-    <style>
-        :root { --primary: #1db954; --accent: #ffff00; --bg: #000000; }
-        body { 
-            background-color: var(--bg); color: white; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
-        }
-
-        /* 頂部區域 */
-        header {
-            padding: 20px; text-align: center;
-            background: linear-gradient(to bottom, rgba(30,30,30,0.9), transparent);
-            z-index: 100;
-        }
-        
-        .visualizer {
-            display: flex; justify-content: center; align-items: flex-end;
-            gap: 4px; height: 30px; margin-bottom: 15px;
-        }
-        .bar { width: 4px; height: 4px; background: var(--primary); border-radius: 2px; transition: height 0.1s; }
-
-        button {
-            padding: 12px 30px; font-size: 16px; border-radius: 25px; border: none;
-            background: var(--primary); color: white; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); cursor: pointer;
-        }
-        button:disabled { background: #444; color: #888; }
-
-        #status { font-size: 13px; color: #aaa; margin-top: 10px; min-height: 1.2em; }
-
-        /* 歌詞視窗 */
-        #lyrics-window {
-            flex: 1; overflow-y: auto; position: relative;
-            mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
-            -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
-            scroll-behavior: smooth;
-            padding: 45vh 0; /* 讓第一句置中 */
-        }
-        #lyrics-window::-webkit-scrollbar { display: none; }
-
-        .lyric-line {
-            padding: 15px 20px; margin: 10px 0; text-align: center;
-            font-size: 1.3rem; opacity: 0.25; transition: all 0.4s;
-            transform: scale(0.9); word-break: break-all;
-        }
-        .lyric-line.active {
-            opacity: 1; color: var(--accent); font-size: 1.9rem;
-            font-weight: bold; transform: scale(1);
-            text-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
-        }
-    </style>
-</head>
-<body>
-
-<header>
-    <div class="visualizer" id="viz">
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
-    </div>
-    <button id="record-btn" disabled>引擎初始化中...</button>
-    <div id="status">正在嘗試建立音訊連線...</div>
+    <button id="record-btn" disabled>正在載入引擎...</button>
+    <div id="status">正在從備用伺服器載入 SDK...</div>
 </header>
 
 <div id="lyrics-window">
     <div id="lyrics-container">
-        <p class="lyric-line active">等待啟動辨識...</p>
+        <p class="lyric-line active">準備就緒後將顯示歌詞</p>
     </div>
 </div>
 
 <script>
-    // 請確認你的 ACRCloud 資訊正確
     const ACR_CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
         access_key: '66145bf5df18b9b95ee91ec7c674a810',
@@ -193,22 +56,35 @@
     let animationFrame;
     let isTracking = false;
 
-    // 1. 強健的 SDK 載入機制
+    // 🔄 修正後的載入機制：如果官方載不到，就換一個
     async function loadSDK() {
-        return new Promise((resolve, reject) => {
-            if (window.ACRCloudWebRTC || window.ACRCloud) return resolve(window.ACRCloudWebRTC || window.ACRCloud);
-            const script = document.createElement('script');
-            script.src = "https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js";
-            script.onload = () => {
+        const sources = [
+            "https://unpkg.com/acrcloud-webrtc@1.0.4/dist/acrcloud-webrtc.min.js",
+            "https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"
+        ];
+
+        for (let src of sources) {
+            try {
+                console.log("嘗試載入 SDK 來源:", src);
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
                 const Lib = window.ACRCloudWebRTC || window.ACRCloud;
-                Lib ? resolve(Lib) : reject("找不到 ACRCloud 物件");
-            };
-            script.onerror = () => reject("SDK 檔案下載失敗");
-            document.head.appendChild(script);
-        });
+                if (Lib) {
+                    console.log("✅ SDK 載入成功!");
+                    return Lib;
+                }
+            } catch (e) {
+                console.warn("❌ 此來源失敗，切換下一個...");
+            }
+        }
+        throw new Error("所有 SDK 來源都失效，請檢查網路連線");
     }
 
-    // 2. 初始化引擎
     async function init() {
         const btn = document.getElementById('record-btn');
         const status = document.getElementById('status');
@@ -217,10 +93,9 @@
             acrDetector = new Lib(ACR_CONFIG);
             btn.disabled = false;
             btn.innerText = "開始自動辨識";
-            status.innerText = "✅ 系統就緒，點擊開始";
+            status.innerText = "✅ 引擎載入成功";
             btn.onclick = startRecognition;
             
-            // 啟動視覺化條
             const bars = document.querySelectorAll('.bar');
             setInterval(() => {
                 bars.forEach(bar => {
@@ -228,156 +103,86 @@
                 });
             }, 100);
         } catch (e) {
+            status.innerText = "❌ 失敗: " + e.message;
             console.error(e);
-            status.innerText = "❌ 初始化失敗: " + e;
         }
     }
 
-    // 3. 音樂辨識邏輯
     async function startRecognition() {
         const btn = document.getElementById('record-btn');
         const status = document.getElementById('status');
-        
         isTracking = true;
         btn.disabled = true;
-        status.innerText = "🎤 正在聆聽環境音樂...";
+        status.innerText = "🎤 正在聽歌...";
 
         try {
             const result = await acrDetector.identify();
-            console.log("辨識結果:", result);
-
             if (result?.status?.code === 0) {
                 const track = result.metadata.music[0];
-                const title = track.title;
-                const artist = track.artists[0].name;
-                const offset = track.play_offset_ms / 1000;
-
-                status.innerText = `🎵 正在播放：${title}`;
-                await fetchLyrics(title, artist, offset);
-
-                // 20秒後自動再次辨識進行校正
-                setTimeout(startRecognition, 20000);
+                status.innerText = `🎵 辨識中：${track.title}`;
+                await fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
+                setTimeout(startRecognition, 25000); // 25秒後自動校正
             } else {
-                status.innerText = "⚠️ 無法辨識，請靠近音源";
+                status.innerText = "⚠️ 無法辨識，請更靠近音源";
                 isTracking = false;
             }
         } catch (err) {
-            console.error(err);
             status.innerText = "❌ 錯誤：" + err.message;
             isTracking = false;
         } finally {
             btn.disabled = false;
-            btn.innerText = "重新校正 / 辨識";
         }
     }
 
-    // 4. 抓取歌詞 (LRCLIB)
     async function fetchLyrics(title, artist, offset) {
         try {
             const response = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title + ' ' + artist)}`);
             const data = await response.json();
             const track = data.find(t => t.syncedLyrics);
-            
-            if (track) {
-                parseLRC(track.syncedLyrics, offset);
-            } else {
-                document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">找不到同步歌詞</p>';
-            }
+            if (track) parseLRC(track.syncedLyrics, offset);
+            else document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">未找到同步歌詞</p>';
         } catch (e) {
-            document.getElementById('status').innerText = "❌ 歌詞搜尋失敗";
+            document.getElementById('status').innerText = "❌ 歌詞載入失敗";
         }
     }
 
-    // 5. 解析 LRC 並啟動同步
     function parseLRC(lrcText, offset) {
         const lines = lrcText.split('\n');
         lyricsData = lines.map(line => {
             const match = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
             if (match) return { time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() };
         }).filter(item => item && item.text !== "");
-
         renderLyrics();
         startSync(offset);
     }
 
     function renderLyrics() {
-        const container = document.getElementById('lyrics-container');
-        container.innerHTML = lyricsData.map((l, i) => 
+        document.getElementById('lyrics-container').innerHTML = lyricsData.map((l, i) => 
             `<div id="line-${i}" class="lyric-line">${l.text}</div>`).join('');
     }
 
-    // 6. 滾動同步引擎
     function startSync(offset) {
         if (animationFrame) cancelAnimationFrame(animationFrame);
         startTime = performance.now() - (offset * 1000);
-
         let lastIdx = -1;
         function update() {
             const now = (performance.now() - startTime) / 1000;
             let currentIdx = -1;
-
             for (let i = 0; i < lyricsData.length; i++) {
-                if (now >= lyricsData[i].time) currentIdx = i;
-                else break;
+                if (now >= lyricsData[i].time) currentIdx = i; else break;
             }
-
             if (currentIdx !== -1 && currentIdx !== lastIdx) {
                 const lines = document.querySelectorAll('.lyric-line');
                 lines.forEach((l, i) => l.classList.toggle('active', i === currentIdx));
-                
                 const activeLine = document.getElementById(`line-${currentIdx}`);
-                if (activeLine) {
-                    activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
+                if (activeLine) activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 lastIdx = currentIdx;
             }
             animationFrame = requestAnimationFrame(update);
         }
         update();
     }
-
     window.onload = init;
 </script>
 </body>
 </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 function parseLRC(lrcText, offset) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const lines = lrcText.split('\n');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    lyricsData = lines.map(line => {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (match) return { time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() };
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }).filter(item => item && item.text !== "");
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            renderLyrics();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    startSync(offset);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            function renderLyrics() {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    document.getElementById('lyrics-container').innerHTML = lyricsData.map((l, i) => 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                `<p id="line-${i}" class="lyric-line">${l.text}</p>`).join('');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        function startSync(offset) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                cancelAnimationFrame(animationFrame);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        startTime = performance.now() - (offset * 1000);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                function update() {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const currentTime = (performance.now() - startTime) / 1000;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        let activeIndex = -1;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    for (let i = 0; i < lyricsData.length; i++) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    if (currentTime >= lyricsData[i].time) activeIndex = i;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    else break;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (activeIndex !== -1) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const lines = document.querySelectorAll('.lyric-line');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            lines.forEach((line, i) => {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                line.classList.toggle('active', i === activeIndex);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                document.getElementById('lyrics-container').style.transform = `translateY(${activeIndex * -75}px)`;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        animationFrame = requestAnimationFrame(update);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        update();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </script>
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </body>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
