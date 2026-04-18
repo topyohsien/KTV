@@ -8,6 +8,8 @@
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>var vConsole = new window.VConsole();</script>
 
+    <script src="https://unpkg.com/acrcloud-webrtc@1.0.4/dist/acrcloud-webrtc.min.js" crossorigin="anonymous"></script>
+
     <style>
         :root { --primary: #1db954; --accent: #ffff00; --bg: #000000; }
         body { 
@@ -15,16 +17,22 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
-        header { padding: 20px; text-align: center; background: linear-gradient(to bottom, rgba(30,30,30,0.9), transparent); z-index: 100; }
+        header { padding: 20px; text-align: center; background: rgba(20,20,20,0.95); z-index: 100; border-bottom: 1px solid #333; }
         .visualizer { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 30px; margin-bottom: 15px; }
         .bar { width: 4px; height: 4px; background: var(--primary); border-radius: 2px; transition: height 0.1s; }
-        button { padding: 12px 30px; font-size: 16px; border-radius: 25px; border: none; background: var(--primary); color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); cursor: pointer; }
+        button { padding: 12px 30px; font-size: 16px; border-radius: 25px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
         button:disabled { background: #444; color: #888; }
         #status { font-size: 13px; color: #aaa; margin-top: 10px; min-height: 1.2em; }
-        #lyrics-window { flex: 1; overflow-y: auto; position: relative; mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent); scroll-behavior: smooth; padding: 45vh 0; }
+        
+        #lyrics-window { 
+            flex: 1; overflow-y: auto; position: relative; 
+            scroll-behavior: smooth; padding: 45vh 0;
+            mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+        }
         #lyrics-window::-webkit-scrollbar { display: none; }
-        .lyric-line { padding: 15px 20px; margin: 10px 0; text-align: center; font-size: 1.3rem; opacity: 0.25; transition: all 0.4s; transform: scale(0.9); word-break: break-all; }
-        .lyric-line.active { opacity: 1; color: var(--accent); font-size: 1.9rem; font-weight: bold; transform: scale(1); text-shadow: 0 0 15px rgba(255, 255, 0, 0.4); }
+        .lyric-line { padding: 15px 20px; margin: 10px 0; text-align: center; font-size: 1.3rem; opacity: 0.25; transition: all 0.4s; transform: scale(0.9); }
+        .lyric-line.active { opacity: 1; color: var(--accent); font-size: 1.9rem; font-weight: bold; transform: scale(1); }
     </style>
 </head>
 <body>
@@ -33,13 +41,13 @@
     <div class="visualizer" id="viz">
         <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
     </div>
-    <button id="record-btn" disabled>正在載入引擎...</button>
-    <div id="status">正在從備用伺服器載入 SDK...</div>
+    <button id="record-btn" disabled>正在初始化...</button>
+    <div id="status">檢查音訊系統中...</div>
 </header>
 
 <div id="lyrics-window">
     <div id="lyrics-container">
-        <p class="lyric-line active">準備就緒後將顯示歌詞</p>
+        <p class="lyric-line active">點擊按鈕開始自動同步</p>
     </div>
 </div>
 
@@ -56,46 +64,28 @@
     let animationFrame;
     let isTracking = false;
 
-    // 🔄 修正後的載入機制：如果官方載不到，就換一個
-    async function loadSDK() {
-        const sources = [
-            "https://unpkg.com/acrcloud-webrtc@1.0.4/dist/acrcloud-webrtc.min.js",
-            "https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"
-        ];
-
-        for (let src of sources) {
-            try {
-                console.log("嘗試載入 SDK 來源:", src);
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.head.appendChild(script);
-                });
-                const Lib = window.ACRCloudWebRTC || window.ACRCloud;
-                if (Lib) {
-                    console.log("✅ SDK 載入成功!");
-                    return Lib;
-                }
-            } catch (e) {
-                console.warn("❌ 此來源失敗，切換下一個...");
-            }
-        }
-        throw new Error("所有 SDK 來源都失效，請檢查網路連線");
-    }
-
+    // 🔄 改良版：直接檢查全域變數是否已存在
     async function init() {
         const btn = document.getElementById('record-btn');
         const status = document.getElementById('status');
+        
         try {
-            const Lib = await loadSDK();
+            // 等待一小段時間確保腳本執行
+            await new Promise(r => setTimeout(r, 500));
+            
+            const Lib = window.ACRCloudWebRTC || window.ACRCloud;
+            
+            if (!Lib) {
+                throw new Error("SDK 載入失敗，請確認網路或嘗試更換瀏覽器");
+            }
+
             acrDetector = new Lib(ACR_CONFIG);
             btn.disabled = false;
             btn.innerText = "開始自動辨識";
-            status.innerText = "✅ 引擎載入成功";
+            status.innerText = "✅ 引擎已就緒";
             btn.onclick = startRecognition;
             
+            // 視覺化動畫
             const bars = document.querySelectorAll('.bar');
             setInterval(() => {
                 bars.forEach(bar => {
@@ -103,7 +93,7 @@
                 });
             }, 100);
         } catch (e) {
-            status.innerText = "❌ 失敗: " + e.message;
+            status.innerText = "❌ " + e.message;
             console.error(e);
         }
     }
@@ -113,17 +103,18 @@
         const status = document.getElementById('status');
         isTracking = true;
         btn.disabled = true;
-        status.innerText = "🎤 正在聽歌...";
+        status.innerText = "🎤 正在聽歌中...";
 
         try {
             const result = await acrDetector.identify();
             if (result?.status?.code === 0) {
                 const track = result.metadata.music[0];
-                status.innerText = `🎵 辨識中：${track.title}`;
+                status.innerText = `🎵 辨識：${track.title}`;
                 await fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
-                setTimeout(startRecognition, 25000); // 25秒後自動校正
+                // 30秒後自動再次辨識校正
+                setTimeout(startRecognition, 30000);
             } else {
-                status.innerText = "⚠️ 無法辨識，請更靠近音源";
+                status.innerText = "⚠️ 辨識失敗，請靠近音源";
                 isTracking = false;
             }
         } catch (err) {
@@ -131,6 +122,7 @@
             isTracking = false;
         } finally {
             btn.disabled = false;
+            btn.innerText = "重新校正";
         }
     }
 
@@ -140,9 +132,9 @@
             const data = await response.json();
             const track = data.find(t => t.syncedLyrics);
             if (track) parseLRC(track.syncedLyrics, offset);
-            else document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">未找到同步歌詞</p>';
+            else document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">找不到同步歌詞</p>';
         } catch (e) {
-            document.getElementById('status').innerText = "❌ 歌詞載入失敗";
+            document.getElementById('status').innerText = "❌ 歌詞搜尋失敗";
         }
     }
 
@@ -163,8 +155,10 @@
 
     function startSync(offset) {
         if (animationFrame) cancelAnimationFrame(animationFrame);
-        startTime = performance.now() - (offset * 1000);
+        // 加入些微延遲補償辨識時間 (約 0.3s)
+        startTime = performance.now() - (offset * 1000) - 300;
         let lastIdx = -1;
+
         function update() {
             const now = (performance.now() - startTime) / 1000;
             let currentIdx = -1;
@@ -182,6 +176,7 @@
         }
         update();
     }
+
     window.onload = init;
 </script>
 </body>
