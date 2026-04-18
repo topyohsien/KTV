@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI KTV 歌詞助手</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', sans-serif;
+            background-color: #121212;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        button {
+            background-color: #1DB954;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            margin: 20px 0;
+            transition: 0.3s;
+        }
+        button:hover { background-color: #1ed760; }
+        #status { color: #b3b3b3; margin-bottom: 10px; }
+        #result {
+            font-size: 24px;
+            color: #1DB954;
+            margin: 20px 0;
+            min-height: 1.2em;
+        }
+        /* 歌詞滾動區 */
+        #lyrics-window {
+            height: 200px;
+            overflow: hidden;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            border-radius: 10px;
+            position: relative;
+            margin-top: 30px;
+        }
+        #lyrics-content {
+            transition: transform 0.5s ease-in-out;
+            padding: 90px 0; /* 讓第一行歌詞居中 */
+        }
+        .lyric-line {
+            padding: 10px 0;
+            font-size: 18px;
+            color: #666;
+            transition: 0.3s;
+        }
+        .lyric-line.active {
+            color: #fff;
+            font-size: 22px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎤 AI KTV 歌詞助手</h1>
+    <button id="startBtn">啟動自動辨識 (每10秒)</button>
+    
+    <div id="status">目前狀態：等待啟動</div>
+    <div id="result">尚未辨識歌曲</div>
+
+    <div id="lyrics-window">
+        <div id="lyrics-content">
+            <div class="lyric-line">準備就緒...</div>
+            <div class="lyric-line">當辨識成功後</div>
+            <div class="lyric-line">這裡會出現滾動歌詞</div>
+        </div>
+    </div>
+</div>
+
+<script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"></script>
+
+<script>
+const startBtn = document.getElementById('startBtn');
+const statusDiv = document.getElementById('status');
+const resultDiv = document.getElementById('result');
+const lyricsContent = document.getElementById('lyrics-content');
+
+// 你的 ACRCloud 配置
+const config = {
+    host: 'identify-ap-southeast-1.acrcloud.com',
+    access_key: '9ef404c2c6119a39f4228c27d747bddb',
+    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0',
+    type: 'audio'
+};
+
+let acr = null;
+
+startBtn.onclick = async () => {
+    if (typeof ACRCloud === 'undefined') {
+        alert("SDK 載入失敗，請檢查網路或 HTTPS 環境");
+        return;
+    }
+
+    if (!acr) acr = new ACRCloud(config);
+
+    try {
+        // 請求權限
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        startBtn.style.display = 'none'; // 啟動後隱藏按鈕
+        startRecognitionCycle();
+    } catch (err) {
+        statusDiv.innerText = "錯誤：需允許麥克風權限才能唱歌";
+    }
+};
+
+function startRecognitionCycle() {
+    statusDiv.innerText = "正在聽環境音...";
+    
+    acr.identify().then(res => {
+        if (res.status && res.status.code === 0) {
+            const music = res.metadata.music[0];
+            const title = music.title;
+            const artist = music.artists[0].name;
+            const offset = music.db_offset_ms; // 毫秒
+
+            resultDiv.innerText = `🎶 ${title} - ${artist}`;
+            statusDiv.innerText = `辨識成功！目前位置：${Math.floor(offset/1000)}秒`;
+            
+            // 模擬歌詞更新邏輯
+            updateLyricsSimulation(title);
+        } else {
+            resultDiv.innerText = "聽不清楚，請靠近音源...";
+            statusDiv.innerText = "狀態：辨識失敗";
+        }
+
+        console.log("10秒後進行下一輪辨識...");
+        setTimeout(startRecognitionCycle, 10000);
+    }).catch(err => {
+        console.error(err);
+        setTimeout(startRecognitionCycle, 5000);
+    });
+}
+
+// 模擬歌詞滾動（因為實際歌詞需要另外抓取 API，這裡演示介面效果）
+function updateLyricsSimulation(title) {
+    const mockLyrics = [
+        "這是一首好聽的歌...",
+        `正在為您播放：${title}`,
+        "準備進入副歌...",
+        "歌詞跟著音樂滾動中",
+        "跟著這個節奏唱吧！",
+        "10 秒後會自動更新位置"
+    ];
+
+    lyricsContent.innerHTML = mockLyrics.map(line => `<div class="lyric-line">${line}</div>`).join('');
+    
+    // 簡單動畫：讓第二行變亮並位移
+    setTimeout(() => {
+        const lines = document.querySelectorAll('.lyric-line');
+        if (lines[1]) {
+            lines[1].classList.add('active');
+            lyricsContent.style.transform = 'translateY(-40px)';
+        }
+    }, 500);
+}
+</script>
+
+</body>
+</html>
