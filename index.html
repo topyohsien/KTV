@@ -19,8 +19,8 @@
         }
         header { padding: 25px 20px; text-align: center; border-bottom: 1px solid #333; }
         button { padding: 12px 35px; font-size: 16px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
-        button:disabled { background: #444; color: #888; cursor: not-allowed; }
-        #status { font-size: 13px; color: #aaa; margin-top: 12px; }
+        button:disabled { background: #444; color: #888; }
+        #status { font-size: 13px; color: #aaa; margin-top: 12px; height: 20px; }
         #lyrics-window { flex: 1; overflow-y: auto; scroll-behavior: smooth; padding: 40vh 0; text-align: center; }
         .lyric-line { padding: 15px; font-size: 1.4rem; opacity: 0.2; transition: 0.4s; }
         .lyric-line.active { opacity: 1; color: var(--accent); font-size: 2rem; font-weight: bold; }
@@ -30,34 +30,32 @@
 
 <header>
     <button id="record-btn">開始同步歌詞</button>
-    <div id="status">✅ 引擎已就緒</div>
+    <div id="status">準備就緒</div>
 </header>
 
 <div id="lyrics-window">
     <div id="lyrics-container">
-        <p class="lyric-line active">請點擊按鈕並靠近音源</p>
+        <p class="lyric-line active">點擊按鈕後靠近音源</p>
     </div>
 </div>
 
 <script>
-    // 您的 ACRCloud 設定
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
         access_key: '66145bf5df18b9b95ee91ec7c674a810',
-        access_secret: 'dX7tU0vquIO0CINVZJiBbpnUA1TSaw72nB1tfDn8a',
-        endpoint: '/v1/identify'
+        access_secret: 'dX7tU0vquIO0CINVZJiBbpnUA1TSaw72nB1tfDn8a'
     };
-
-    let lyricsData = [];
-    let startTime = 0;
 
     const btn = document.getElementById('record-btn');
     const status = document.getElementById('status');
+    let lyricsData = [];
+    let startTime = 0;
+
     btn.onclick = startRecognition;
 
     async function startRecognition() {
         btn.disabled = true;
-        status.innerText = "🎤 正在聆聽中 (6秒)...";
+        status.innerText = "🎤 錄音中 (6秒)...";
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -65,10 +63,10 @@
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-            let audioData = [];
+            let audioChunks = [];
             processor.onaudioprocess = (e) => {
                 const input = e.inputBuffer.getChannelData(0);
-                audioData.push(new Float32Array(input));
+                audioChunks.push(new Float32Array(input));
             };
 
             source.connect(processor);
@@ -77,11 +75,10 @@
             setTimeout(async () => {
                 stream.getTracks().forEach(t => t.stop());
                 audioContext.close();
-                status.innerText = "🔍 正在進行辨識...";
+                status.innerText = "🔍 正在驗證身分並辨識...";
                 
-                // 轉換為 16-bit PCM
-                const pcmData = flattenAndConvert(audioData);
-                await sendToACR(pcmData);
+                const pcmBuffer = convertToPcm(audioChunks);
+                await uploadToACR(pcmBuffer);
             }, 6000);
 
         } catch (err) {
@@ -90,51 +87,52 @@
         }
     }
 
-    function flattenAndConvert(chunks) {
+    function convertToPcm(chunks) {
         let length = chunks.reduce((acc, curr) => acc + curr.length, 0);
         let result = new Int16Array(length);
         let offset = 0;
         for (let chunk of chunks) {
             for (let i = 0; i < chunk.length; i++) {
-                result[offset++] = chunk[i] * 0x7FFF;
+                result[offset++] = Math.max(-1, Math.min(1, chunk[i])) * 0x7FFF;
             }
         }
         return result.buffer;
     }
 
-    async function sendToACR(audioBuffer) {
+    async function uploadToACR(pcmBuffer) {
         const timestamp = Math.floor(Date.now() / 1000);
-        const signatureString = `POST\n${CONFIG.endpoint}\n${CONFIG.access_key}\naudio\n1\n${timestamp}`;
-        
-        // 使用 CryptoJS 計算正確的 HMAC-SHA1 簽章
-        const signature = CryptoJS.HmacSHA1(signatureString, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
+        const method = "POST";
+        const uri = "/v1/identify";
+        const dataType = "audio";
+        const sigVer = "1";
 
-        const formData = new FormData();
-        formData.append("audio", new Blob([audioBuffer], { type: 'sampleRate=8000;channels=1' }));
-        formData.append("access_key", CONFIG.access_key);
-        formData.append("data_type", "audio");
-        formData.append("signature_version", "1");
-        formData.append("signature", signature);
-        formData.append("sample_rate", "8000");
-        formData.append("timestamp", timestamp);
+        // 核心修正：Signature String 必須包含正確的換行順序
+        const sigString = [method, uri, CONFIG.access_key, dataType, sigVer, timestamp].join('\n');
+        const signature = CryptoJS.HmacSHA1(sigString, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
+
+        const fd = new FormData();
+        fd.append("audio", new Blob([pcmBuffer], { type: 'sampleRate=8000;channels=1' }));
+        fd.append("access_key", CONFIG.access_key);
+        fd.append("data_type", dataType);
+        fd.append("signature_version", sigVer);
+        fd.append("signature", signature);
+        fd.append("sample_rate", "8000");
+        fd.append("timestamp", timestamp);
 
         try {
-            const response = await fetch(`https://${CONFIG.host}${CONFIG.endpoint}`, {
-                method: 'POST',
-                body: formData
-            });
-            const result = await response.json();
+            const res = await fetch(`https://${CONFIG.host}${uri}`, { method: 'POST', body: fd });
+            const data = await res.json();
 
-            if (result.status.code === 0) {
-                const track = result.metadata.music[0];
-                status.innerText = `🎵 辨識成功: ${track.title}`;
+            if (data.status.code === 0) {
+                const track = data.metadata.music[0];
+                status.innerText = `🎵 辨識：${track.title}`;
                 fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
             } else {
-                status.innerText = `⚠️ 辨識失敗: ${result.status.msg} (${result.status.code})`;
+                status.innerText = `⚠️ ${data.status.msg} (${data.status.code})`;
                 btn.disabled = false;
             }
         } catch (err) {
-            status.innerText = "❌ 網路連線失敗";
+            status.innerText = "❌ 網路失敗";
             btn.disabled = false;
         }
     }
@@ -148,13 +146,10 @@
                 parseLRC(track.syncedLyrics, offset);
                 btn.disabled = false;
             } else {
-                document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">暫無同步歌詞</p>';
+                document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">無同步歌詞</p>';
                 btn.disabled = false;
             }
-        } catch (e) {
-            status.innerText = "❌ 歌詞載入失敗";
-            btn.disabled = false;
-        }
+        } catch (e) { btn.disabled = false; }
     }
 
     function parseLRC(lrc, offset) {
@@ -162,13 +157,11 @@
             const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
             return m ? { time: parseInt(m[1]) * 60 + parseFloat(m[2]), text: m[3].trim() } : null;
         }).filter(Boolean);
-        renderLyrics();
-        startSync(offset);
-    }
-
-    function renderLyrics() {
+        
         document.getElementById('lyrics-container').innerHTML = lyricsData.map((l, i) => 
             `<div id="line-${i}" class="lyric-line">${l.text}</div>`).join('');
+        
+        startSync(offset);
     }
 
     function startSync(offset) {
@@ -179,8 +172,8 @@
             if (idx !== -1) {
                 const lines = document.querySelectorAll('.lyric-line');
                 lines.forEach((l, i) => l.classList.toggle('active', i === idx));
-                const activeLine = document.getElementById(`line-${idx}`);
-                if (activeLine) activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const active = document.getElementById(`line-${idx}`);
+                if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             requestAnimationFrame(update);
         }
