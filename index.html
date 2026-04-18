@@ -130,4 +130,14 @@
             const now = (performance.now() - startTime) / 1000;
             const idx = lyricsData.findLastIndex(l => now >= l.time);
             if (idx !== -1) {
-                document.querySelectorAll('.lyric-line').forEach((l, i) => l.classList.toggle('active', i === idx
+                document.querySelectorAll('.lyric-line').forEach((l, i) => l.classList.toggle('active', i === idx));
+                const active = document.getElementById(`line-${idx}`);
+                if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            requestAnimationFrame(update);
+        }
+        update();
+    }
+</script>
+</body>
+</html>
