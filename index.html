@@ -3,31 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV 辨識 - 純淨收音版</title>
+    <title>AI KTV 辨識 - 16K 標準版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
     <style>
         :root { --primary: #1db954; --bg: #0b0b0b; }
-        body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; justify-content: center; }
-        .card { background: #181818; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; border: 1px solid #333; }
-        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 1.1rem; }
-        button:disabled { background: #444; }
+        body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        .card { background: #181818; padding: 30px; border-radius: 20px; margin-top: 50px; }
+        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; font-size: 1.1rem; }
         #status { margin-top: 25px; color: #b3b3b3; line-height: 1.6; }
-        .debug-info { font-size: 0.7rem; color: #555; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="card">
         <h2>AI KTV 辨識系統</h2>
-        <p style="color: var(--primary); font-size: 0.8rem;">● 已啟用純淨收音模式</p>
-        <button id="record-btn">點擊開始識別</button>
+        <p style="color: #888;">採樣率已提升至 16000Hz (標準品質)</p>
+        <button id="record-btn">開始辨識音樂</button>
         <div id="status">準備就緒</div>
-        <div id="debug" class="debug-info"></div>
     </div>
 
 <script>
+    // 使用您最新的 Key
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
         access_key: '9ef404c2c6119a39f4228c27d747bddb',
@@ -36,76 +34,61 @@
 
     const btn = document.getElementById('record-btn');
     const status = document.getElementById('status');
-    const debug = document.getElementById('debug');
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "正在取得麥克風權限...";
+        status.innerText = "🎤 麥克風初始化...";
 
         try {
-            // 強制設定 8000Hz 採樣率，符合 ACRCloud 建議
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
-            
-            // 關鍵優化：強制關閉所有會干擾音樂收音的過濾器
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: false, // 關閉回音消除
-                    noiseSuppression: false,  // 關閉降噪 (這最重要，否則音樂會被當噪音)
-                    autoGainControl: false,   // 關閉自動增益控制
-                    channelCount: 1
-                } 
-            });
-            
+            // 提升採樣率至 16000Hz
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
             let chunks = [];
 
-            processor.onaudioprocess = (e) => {
-                chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-            };
+            processor.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
             
             source.connect(processor);
             processor.connect(audioContext.destination);
-            status.innerHTML = "<b style='color:#1db954'>正在收音 (12秒)...</b><br>請保持音樂播放";
+            status.innerText = "錄音中 (12秒)... 請靠近音源";
 
             setTimeout(async () => {
                 stream.getTracks().forEach(t => t.stop());
                 processor.disconnect();
-                status.innerText = "🔍 正在比對雲端樂庫...";
+                status.innerText = "🔍 正在上傳並提取指紋...";
 
-                const wavData = createWav(chunks, 8000);
+                const wavData = createWav(chunks, 16000); // 同步改為 16000
                 const timestamp = Math.floor(Date.now() / 1000).toString();
                 
-                // 修正簽名算法
                 const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
-                const hash = CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret);
-                const signature = CryptoJS.enc.Base64.stringify(hash);
+                const signature = CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret));
 
                 const fd = new FormData();
-                fd.append("audio", wavData.blob, "rec.wav");
+                fd.append("audio", wavData.blob, "recording.wav");
                 fd.append("access_key", CONFIG.access_key);
                 fd.append("data_type", "audio"); 
                 fd.append("signature_version", "1");
                 fd.append("signature", signature);
-                fd.append("sample_rate", "8000");
+                fd.append("sample_rate", "16000"); // 必須與錄音一致
                 fd.append("timestamp", timestamp);
 
-                debug.innerText = `[偵錯] 原始振幅: ${wavData.maxAmp.toFixed(4)}`;
+                console.log(`>>> [Debug] 16K 模式 - 振幅: ${wavData.maxAmp.toFixed(4)}`);
 
                 const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
                 const data = await res.json();
                 
                 if (data.status.code === 0) {
-                    const music = data.metadata.music[0];
-                    status.innerHTML = `✅ 辨識成功！<br><b>${music.title}</b><br><small>${music.artists[0].name}</small>`;
+                    status.innerHTML = `✅ 成功：${data.metadata.music[0].title}`;
                 } else {
-                    status.innerHTML = `❌ 錯誤: ${data.status.msg}<br><small>代碼: ${data.status.code}</small>`;
+                    status.innerHTML = `❌ 失敗 (${data.status.code})<br>${data.status.msg}`;
+                    // 如果還是 2004，請檢查 ACRCloud Console 的 History 是否出現這筆記錄
                 }
                 btn.disabled = false;
                 audioContext.close();
             }, 12000);
         } catch (err) {
-            status.innerText = "初始化失敗: " + err.message;
+            status.innerText = "錯誤: " + err.message;
             btn.disabled = false;
         }
     };
@@ -115,12 +98,6 @@
         let buffer = new ArrayBuffer(44 + pcmLength * 2);
         let view = new DataView(buffer);
         let maxAmp = 0;
-
-        for (let chunk of chunks) {
-            for (let i = 0; i < chunk.length; i++) {
-                if (Math.abs(chunk[i]) > maxAmp) maxAmp = Math.abs(chunk[i]);
-            }
-        }
 
         const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
         writeString(0, 'RIFF');
@@ -140,6 +117,7 @@
         for (let chunk of chunks) {
             for (let i = 0; i < chunk.length; i++) {
                 let s = Math.max(-1, Math.min(1, chunk[i]));
+                if (Math.abs(s) > maxAmp) maxAmp = Math.abs(s);
                 view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
                 offset += 2;
             }
