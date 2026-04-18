@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV Final Fix</title>
+    <title>AI KTV 辨識系統 - 最終修復版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
     <style>
         :root { --primary: #1db954; --bg: #0b0b0b; }
-        body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; }
-        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 1.1rem; box-shadow: 0 4px 20px rgba(29, 185, 84, 0.4); }
-        #status { margin-top: 25px; color: #ffeb3b; line-height: 1.6; }
+        body { background: var(--bg); color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; justify-content: center; }
+        .card { background: #181818; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 400px; }
+        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 1.1rem; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); }
+        button:active { transform: scale(0.95); }
+        button:disabled { background: #444; cursor: not-allowed; }
+        #status { margin-top: 25px; color: #b3b3b3; line-height: 1.6; font-size: 0.95rem; }
+        .loading { color: var(--primary); font-weight: bold; }
     </style>
 </head>
 <body>
-    <h2>AI KTV 辨識系統 (參數嚴格版)</h2>
-    <button id="record-btn">開始辨識音樂</button>
-    <div id="status">準備就緒</div>
+
+    <div class="card">
+        <h2>AI KTV 辨識系統</h2>
+        <p style="color: #888; font-size: 0.8rem; margin-bottom: 20px;">請確保環境安靜，將手機靠近音源</p>
+        <button id="record-btn">開始辨識音樂</button>
+        <div id="status">點擊按鈕後將錄音 12 秒</div>
+    </div>
 
 <script>
+    // 1. 使用您剛剛成功建立的新金鑰
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
-        access_key: '66145bf3dff8b9095ee91ec7c674a810',
-        access_secret: 'dX7tU0vqulOGClIVZJlBbpnUA1TSow72nB1fDn8a'
+        access_key: '9ef404c2c6119a39f4228c27d747bddb',
+        access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
     };
 
     const btn = document.getElementById('record-btn');
@@ -31,68 +40,82 @@
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "🎤 初始化設備中...";
+        status.innerHTML = '<span class="loading">🎤 初始化麥克風...</span>';
 
         try {
+            // 2. 強制恢復 AudioContext (解決手機錄製靜音的主因)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
-            if (audioContext.state === 'suspended') await audioContext.resume();
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+                console.log(">>> [Debug] AudioContext 已激活");
+            }
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
             let chunks = [];
 
-            processor.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            processor.onaudioprocess = (e) => {
+                const data = e.inputBuffer.getChannelData(0);
+                chunks.push(new Float32Array(data));
+            };
+            
             source.connect(processor);
             processor.connect(audioContext.destination);
-            status.innerText = "🎤 錄音中 (12秒)...";
+            status.innerHTML = '<span class="loading">正在聽音樂中... (12秒)</span>';
 
             setTimeout(async () => {
+                // 停止錄音
                 stream.getTracks().forEach(t => t.stop());
                 processor.disconnect();
-                status.innerText = "🔍 正在進行參數字串化...";
+                status.innerText = "🔍 正在分析音訊指紋...";
 
+                // 3. 封裝音訊並檢查有效性
                 const wavData = createWav(chunks, 8000);
+                
+                // 4. 準備簽章與傳送
                 const timestamp = Math.floor(Date.now() / 1000).toString();
                 const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
                 const signature = CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
 
-                // 核心修正：確保所有參數皆為字串，且音訊 Blob 類型明確
                 const fd = new FormData();
                 fd.append("audio", wavData.blob, "recording.wav");
-                fd.append("access_key", String(CONFIG.access_key));
-                fd.append("data_type", "audio");
+                fd.append("access_key", CONFIG.access_key);
+                fd.append("data_type", "audio"); 
                 fd.append("signature_version", "1");
-                fd.append("signature", String(signature));
-                fd.append("sample_rate", "8000"); // 強制字串化
-                fd.append("timestamp", String(timestamp));
+                fd.append("signature", signature);
+                fd.append("sample_rate", "8000");
+                fd.append("timestamp", timestamp);
 
-                console.log(`>>> [Debug] 數據效驗 - 大小: ${wavData.blob.size}, 振幅: ${wavData.maxAmp.toFixed(4)}`);
+                console.log(`>>> [Debug] 送出大小: ${wavData.blob.size}, 有效振幅: ${wavData.maxAmp.toFixed(4)}`);
 
-                // 核心修正：不手動設置 Content-Type，讓瀏覽器自動處理 Boundary
-                const res = await fetch(`https://${CONFIG.host}/v1/identify`, {
-                    method: 'POST',
-                    body: fd,
-                    mode: 'cors'
-                });
-                
+                const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
                 const data = await res.json();
-                console.log("--- 伺服器回傳 ---", data);
+                
+                console.log("--- 最終辨識結果 ---", data);
 
                 if (data.status.code === 0) {
-                    status.innerText = "✅ 辨識成功: " + data.metadata.music[0].title;
+                    const music = data.metadata.music[0];
+                    status.innerHTML = `
+                        <div style="color: var(--primary); font-size: 1.2rem; font-weight: bold;">✅ 辨識成功</div>
+                        <div style="margin-top:10px;">歌曲：${music.title}</div>
+                        <div>歌手：${music.artists[0].name}</div>
+                    `;
+                } else if (data.status.code === 1001) {
+                    status.innerHTML = "⚠️ 未辨識到匹配音樂，請將音量調大或靠近一點。";
                 } else {
-                    status.innerText = `⚠️ 參數無效 (3006): 請確認 API Project 類型是否為 Audio Recognition`;
+                    status.innerHTML = `⚠️ 伺服器回報 (${data.status.code}):<br>${data.status.msg}`;
                 }
                 btn.disabled = false;
                 audioContext.close();
             }, 12000);
         } catch (err) {
-            status.innerText = "❌ 錯誤: " + err.message;
+            status.innerHTML = `❌ 錯誤: ${err.message}`;
             btn.disabled = false;
         }
     };
 
+    // 5. WAV 封裝函數
     function createWav(chunks, sampleRate) {
         let pcmLength = chunks.reduce((acc, curr) => acc + curr.length, 0);
         let buffer = new ArrayBuffer(44 + pcmLength * 2);
@@ -100,6 +123,7 @@
         let maxAmp = 0;
 
         const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+        
         writeString(0, 'RIFF');
         view.setUint32(4, 36 + pcmLength * 2, true);
         writeString(8, 'WAVEfmt ');
