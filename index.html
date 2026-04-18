@@ -3,27 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV Pro - Final Fix</title>
+    <title>AI KTV Pro - Fixed Service</title>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
+
     <style>
         :root { --primary: #1db954; --accent: #ffff00; --bg: #0b0b0b; }
         body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        button { padding: 15px 35px; font-size: 18px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .container { max-width: 500px; margin: auto; }
+        button { padding: 15px 35px; font-size: 18px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; margin-top: 20px; box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3); }
+        button:disabled { background: #444; box-shadow: none; }
         #status { margin-top: 20px; color: #aaa; font-size: 14px; }
-        #lyrics-container { margin-top: 40px; font-size: 1.5rem; color: var(--accent); min-height: 200px; }
+        #lyrics-container { margin-top: 40px; font-size: 1.6rem; color: var(--accent); min-height: 150px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>AI KTV 歌詞同步系統</h2>
-    <button id="record-btn">開始辨識同步</button>
-    <div id="status">準備就緒</div>
-    <div id="lyrics-container">等待音樂中...</div>
+    <div class="container">
+        <h2>AI KTV 辨識系統</h2>
+        <button id="record-btn">開始辨識音樂</button>
+        <div id="status">準備就緒 (已校對金鑰)</div>
+        <div id="lyrics-container">等待輸入...</div>
+    </div>
 
 <script>
-    // 您提供的正確金鑰組 [8254.jpg, 8255.jpg]
+    // 根據截圖校對的正確金鑰
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
         access_key: '66145bf3dff8b9095ee91ec7c674a810', 
@@ -32,11 +38,12 @@
 
     const btn = document.getElementById('record-btn');
     const status = document.getElementById('status');
+    const lyricsDisplay = document.getElementById('lyrics-container');
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "🎤 錄音辨識中 (10秒)...";
-        console.log(">>> [Debug] 錄音開始");
+        status.innerText = "🎤 錄音中 (10秒)...";
+        console.log(">>> [Debug] 啟動錄音流程");
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -50,20 +57,23 @@
             processor.connect(audioContext.destination);
 
             setTimeout(async () => {
+                // 停止錄音
                 stream.getTracks().forEach(t => t.stop());
                 audioContext.close();
-                status.innerText = "🔍 正在進行雲端辨識...";
-                
+                status.innerText = "🔍 正在封裝 WAV 並傳送...";
+
+                // 1. 生成符合 ACRCloud 規範的標準 WAV 檔案 (解決 3006 關鍵)
+                const wavBlob = createStandardWav(chunks, 8000);
+                console.log(">>> [Debug] WAV Header 封裝完成, 大小:", wavBlob.size);
+
+                // 2. 計算身分驗證簽章
                 const timestamp = Math.floor(Date.now() / 1000).toString();
                 const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
                 const signature = CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
 
-                // 將錄音數據封裝成標準 WAV 檔案
-                const wavBlob = createWavFile(chunks, 8000);
-                console.log("WAV 檔案大小:", wavBlob.size);
-
+                // 3. 封裝 FormData
                 const fd = new FormData();
-                fd.append("audio", wavBlob, "recording.wav");
+                fd.append("audio", wavBlob, "recording.wav"); // 必須指定檔名以符合參數要求
                 fd.append("access_key", CONFIG.access_key);
                 fd.append("data_type", "audio");
                 fd.append("signature_version", "1");
@@ -71,47 +81,57 @@
                 fd.append("sample_rate", "8000");
                 fd.append("timestamp", timestamp);
 
+                console.log(">>> [Debug] 請求參數已就緒, 準備 Fetch");
+
                 const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
                 const data = await res.json();
-                console.log("--- 伺服器回傳 ---", data);
+                
+                console.log("--- 伺服器回傳內容 ---", data);
 
                 if (data.status.code === 0) {
-                    status.innerText = "✅ 辨識成功：" + data.metadata.music[0].title;
-                    // 此處可擴充歌詞同步 fetchLyrics 邏輯
+                    const music = data.metadata.music[0];
+                    status.innerText = "✅ 辨識成功";
+                    lyricsDisplay.innerText = `🎵 ${music.title}\n🎤 ${music.artists[0].name}`;
                 } else {
-                    status.innerText = `⚠️ 錯誤：${data.status.msg} (${data.status.code})`;
+                    status.innerText = `⚠️ 錯誤: ${data.status.msg} (${data.status.code})`;
+                    console.error("辨識失敗詳細資訊:", data.status);
                 }
                 btn.disabled = false;
-            }, 10000); // 延長至10秒提高成功率
+            }, 10000);
         } catch (err) {
-            console.error(err);
-            status.innerText = "❌ 麥克風故障";
+            console.error("麥克風錯誤:", err);
+            status.innerText = "❌ 無法取得麥克風權限";
             btn.disabled = false;
         }
     };
 
-    // 關鍵：將 PCM 數據轉換為標準 WAV 格式以解決 3006 錯誤
-    function createWavFile(chunks, sampleRate) {
-        let length = chunks.reduce((acc, curr) => acc + curr.length, 0);
-        let buffer = new ArrayBuffer(44 + length * 2);
+    // 核心功能：建立符合官方 Identify 協議要求的標準 WAV 結構
+    function createStandardWav(chunks, sampleRate) {
+        let pcmLength = chunks.reduce((acc, curr) => acc + curr.length, 0);
+        let buffer = new ArrayBuffer(44 + pcmLength * 2);
         let view = new DataView(buffer);
 
-        // RIFF chunk descriptor
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, 36 + length * 2, true);
-        writeString(view, 8, 'WAVE');
-        // fmt sub-chunk
-        writeString(view, 12, 'fmt ');
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        // RIFF 標頭
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + pcmLength * 2, true);
+        writeString(8, 'WAVEfmt ');
+        // 格式區塊
         view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
+        view.setUint16(20, 1, true);   // PCM 格式
+        view.setUint16(22, 1, true);   // 單聲道
         view.setUint32(24, sampleRate, true);
         view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        // data sub-chunk
-        writeString(view, 36, 'data');
-        view.setUint32(40, length * 2, true);
+        view.setUint16(32, 2, true);   // Block Align
+        view.setUint16(34, 16, true);  // Bits per sample
+        // 數據區塊
+        writeString(36, 'data');
+        view.setUint32(40, pcmLength * 2, true);
 
         // 寫入 PCM 數據
         let offset = 44;
@@ -123,12 +143,6 @@
             }
         }
         return new Blob([view], { type: 'audio/wav' });
-    }
-
-    function writeString(view, offset, string) {
-        for (let i = 0; i < string.length; i++) {
-            view.setUint8(offset + i, string.charCodeAt(i));
-        }
     }
 </script>
 </body>
