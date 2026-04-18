@@ -43,7 +43,6 @@
     let startTime = 0;
     let animationFrame;
 
-    // 強制動態載入 SDK 解決連線問題
     async function loadSDK() {
         const sources = [
             "https://unpkg.com/acrcloud-webrtc@1.0.4/dist/acrcloud-webrtc.min.js",
@@ -92,7 +91,7 @@
             if (result && result.status.code === 0) {
                 const track = result.metadata.music[0];
                 status.innerText = `🎵 辨識：${track.title}`;
-                fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
+                await fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
             } else {
                 status.innerText = "❌ 無法辨識";
             }
@@ -122,17 +121,36 @@
             if (match) return { time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() };
         }).filter(item => item && item.text !== "");
         renderLyrics();
-                                                                                                                                                                                                                                                                                                                                                                                                  if (result && result.status.code === 0) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const track = result.metadata.music[0];
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            const title = track.title;
-                                                                                                                                                                                                                                                                                                                                                                                                   btn.onclick = startRecognition;
-                                                                                                                                                                                                                                                                                                                                                                                                        } else {
-                                                                                                                                                                                                                                                                                                                                                                                                                        throw new Error("SDK 載入失敗");
-                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                            } catch (e) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                        status.innerText = "❌ 辨識引擎載入錯誤，請重新整理頁面";
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                    console.error(e);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
+        startSync(offset);
+    }
+
+    function renderLyrics() {
+        document.getElementById('lyrics-container').innerHTML = lyricsData.map((l, i) => 
+            `<p id="line-${i}" class="lyric-line">${l.text}</p>`).join('');
+    }
+
+    function startSync(offset) {
+        cancelAnimationFrame(animationFrame);
+        startTime = performance.now() - (offset * 1000);
+        function update() {
+            const now = (performance.now() - startTime) / 1000;
+            let idx = -1;
+            for (let i = 0; i < lyricsData.length; i++) {
+                if (now >= lyricsData[i].time) idx = i; else break;
+            }
+            if (idx !== -1) {
+                const lines = document.querySelectorAll('.lyric-line');
+                lines.forEach((l, i) => l.classList.toggle('active', i === idx));
+                document.getElementById('lyrics-container').style.transform = `translateY(${idx * -75}px)`;
+            }
+            animationFrame = requestAnimationFrame(update);
+        }
+        update();
+    }
+</script>
+</body>
+</html>
+}
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 };
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     async function startRecognition() {
