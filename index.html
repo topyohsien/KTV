@@ -1,4 +1,38 @@
-<div id="lyrics-container">
-  <p class="lyric-line next">點擊按鈕開始辨識...</p>
-</div>
-<button id="recognize-btn">🎤 開始辨識</button>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>我的 KTV 歌詞辨識</title>
+                <style>
+                        body { background-color: #121212; color: white; text-align: center; font-family: sans-serif; }
+                                #lyrics-display { margin-top: 50px; font-size: 24px; min-height: 200px; }
+                                        .active { color: #ffff00; font-size: 32px; font-weight: bold; }
+                                                .upcoming { opacity: 0.5; }
+                                                        button { padding: 15px 30px; font-size: 18px; border-radius: 25px; border: none; background: #1db954; color: white; cursor: pointer; }
+                                                            </style>
+                                                            </head>
+                                                            <body>
+                                                                <h1>🎤 KTV 歌詞辨識助手</h1>
+                                                                    <button onclick="startDemo()">開始測試 (示範模式)</button>
+                                                                        <div id="lyrics-display">
+                                                                                <p id="line1" class="upcoming">等待辨識中...</p>
+                                                                                        <p id="line2" class="upcoming">即將顯示下一句...</p>
+                                                                                            </div>
+
+                                                                                                <script>
+                                                                                                        function startDemo() {
+                                                                                                                    const display = document.getElementById('line1');
+                                                                                                                                display.innerText = "正在播放：周杰倫 - 告白氣球";
+                                                                                                                                            display.className = "active";
+                                                                                                                                                        
+                                                                                                                                                                    setTimeout(() => {
+                                                                                                                                                                                    document.getElementById('line1').innerText = "親愛的 愛上你";
+                                                                                                                                                                                                    document.getElementById('line1').className = "active";
+                                                                                                                                                                                                                    document.getElementById('line2').innerText = "從那天起 甜蜜得很輕易";
+                                                                                                                                                                                                                                }, 2000);
+                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                            </script>
+                                                                                                                                                                                                                                            </body>
+                                                                                                                                                                                                                                            </html>
+                                                                                                                                                                                                                                            
