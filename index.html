@@ -2,21 +2,102 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>我的網頁版 Shazam</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI KTV 歌詞助手</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding-top: 50px; }
-        #status { color: blue; margin: 20px; }
-        #result { font-weight: bold; font-size: 1.5em; color: green; }
+        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .box { border: 1px solid #333; padding: 20px; border-radius: 15px; background: #1a1a1a; max-width: 500px; margin: 0 auto; }
+        button { background: #1DB954; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 30px; cursor: pointer; margin: 20px 0; }
+        #status { color: #888; margin: 10px; font-size: 14px; }
+        #result { font-size: 22px; color: #1DB954; margin: 20px; font-weight: bold; }
+        #debug { font-size: 12px; color: #555; text-align: left; background: #000; padding: 10px; border-radius: 5px; overflow-x: auto; display: none; }
     </style>
 </head>
 <body>
-    <h1>音樂辨識與滾動歌詞</h1>
-    <button id="startBtn">開始每 10 秒偵測一次</button>
-    <div id="status">目前狀態：靜止</div>
-    <div id="result">尚未辨識</div>
-    <div id="lyrics" style="margin-top:20px; color: gray;">(歌詞預計顯示區)</div>
 
-    <script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"></script>
-    <script src="script.js"></script>
+<div class="box">
+    <h1>🎤 AI KTV 助手</h1>
+    <button id="startBtn">啟動辨識 (點我)</button>
+    <div id="status">正在檢查系統...</div>
+    <div id="result">尚未辨識歌曲</div>
+    <div id="debug"></div>
+</div>
+
+<script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"></script>
+
+<script>
+const startBtn = document.getElementById('startBtn');
+const statusDiv = document.getElementById('status');
+const resultDiv = document.getElementById('result');
+const debugDiv = document.getElementById('debug');
+
+function log(msg) {
+    console.log(msg);
+    debugDiv.style.display = 'block';
+    debugDiv.innerHTML += `> ${msg}<br>`;
+}
+
+// 檢查 SDK
+window.onload = () => {
+    if (typeof ACRCloud === 'undefined') {
+        statusDiv.innerText = "❌ SDK 載入失敗，請檢查網路";
+        log("錯誤: ACRCloud SDK 未被載入");
+    } else {
+        statusDiv.innerText = "✅ 系統準備就緒，請點擊按鈕";
+        log("SDK 載入成功");
+    }
+};
+
+const config = {
+    host: 'identify-ap-southeast-1.acrcloud.com',
+    access_key: '9ef404c2c6119a39f4228c27d747bddb',
+    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0',
+    type: 'audio'
+};
+
+let acr = null;
+
+startBtn.onclick = async () => {
+    log("按鈕已被點擊");
+    
+    try {
+        statusDiv.innerText = "正在請求麥克風權限...";
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        log("獲取麥克風授權成功");
+        
+        if (!acr) acr = new ACRCloud(config);
+        
+        startBtn.style.display = 'none';
+        runCycle();
+    } catch (err) {
+        log("麥克風錯誤: " + err.name);
+        statusDiv.innerText = "❌ 無法啟動：請允許麥克風權限";
+    }
+};
+
+function runCycle() {
+    statusDiv.innerText = "正在傾聽環境音樂 (約8秒)...";
+    log("開始辨識循環...");
+    
+    acr.identify().then(res => {
+        log("收到回應: " + res.status.msg);
+        
+        if (res.status.code === 0) {
+            const m = res.metadata.music[0];
+            resultDiv.innerText = `🎶 ${m.title} - ${m.artists[0].name}`;
+            statusDiv.innerText = "辨識成功！10秒後再次偵測...";
+        } else {
+            resultDiv.innerText = "聽不清楚，請靠近音源";
+            statusDiv.innerText = "未找到匹配音樂";
+        }
+        
+        setTimeout(runCycle, 10000);
+    }).catch(err => {
+        log("辨識過程崩潰: " + err);
+        setTimeout(runCycle, 5000);
+    });
+}
+</script>
+
 </body>
 </html>
