@@ -5,48 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI KTV 歌詞助手</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
-        .box { border: 1px solid #333; padding: 20px; border-radius: 15px; background: #1a1a1a; max-width: 500px; margin: 0 auto; }
-        button { background: #1DB954; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 30px; cursor: pointer; margin: 20px 0; }
-        #status { color: #888; margin: 10px; font-size: 14px; }
-        #result { font-size: 22px; color: #1DB954; margin: 20px; font-weight: bold; }
-        #debug { font-size: 12px; color: #555; text-align: left; background: #000; padding: 10px; border-radius: 5px; overflow-x: auto; display: none; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; margin: 0; }
+        .box { border: 1px solid #333; padding: 30px 20px; border-radius: 20px; background: #1a1a1a; max-width: 450px; margin: 20px auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { font-size: 24px; margin-bottom: 5px; }
+        button { background: #1DB954; color: white; border: none; padding: 18px 40px; font-size: 20px; border-radius: 40px; cursor: pointer; margin: 20px 0; font-weight: bold; width: 80%; transition: 0.2s; }
+        button:active { transform: scale(0.95); background: #1ed760; }
+        #status { color: #aaa; margin: 10px; font-size: 15px; min-height: 1.5em; }
+        #result { font-size: 26px; color: #1DB954; margin: 25px 0; font-weight: bold; text-shadow: 0 0 10px rgba(29,185,84,0.3); }
+        #debug { font-family: monospace; font-size: 11px; color: #444; text-align: left; background: #000; padding: 12px; border-radius: 8px; margin-top: 20px; display: block; max-height: 100px; overflow-y: auto; white-space: pre-wrap; }
+        .hint { color: #f1c40f; font-size: 13px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
 
 <div class="box">
     <h1>🎤 AI KTV 助手</h1>
-    <button id="startBtn">啟動辨識 (點我)</button>
-    <div id="status">正在檢查系統...</div>
+    <p style="color: #666; font-size: 14px;">自動偵測環境音樂並練習唱歌</p>
+    
     <div id="result">尚未辨識歌曲</div>
-    <div id="debug"></div>
+    <button id="startBtn">啟動自動偵測</button>
+    <div id="status">正在載入辨識引擎...</div>
+    <div id="hint-msg" class="hint">⚠️ 請點擊右上角「...」選擇用 Chrome 或 Safari 開啟</div>
+    
+    <div id="debug">系統日誌準備中...</div>
 </div>
 
-<script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"></script>
+<script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js" onerror="loadBackupSDK()"></script>
 
 <script>
 const startBtn = document.getElementById('startBtn');
 const statusDiv = document.getElementById('status');
 const resultDiv = document.getElementById('result');
 const debugDiv = document.getElementById('debug');
+const hintMsg = document.getElementById('hint-msg');
 
 function log(msg) {
-    console.log(msg);
-    debugDiv.style.display = 'block';
-    debugDiv.innerHTML += `> ${msg}<br>`;
+    const time = new Date().toLocaleTimeString().split(' ')[0];
+    debugDiv.innerHTML = `[${time}] ${msg}\n` + debugDiv.innerHTML;
 }
 
-// 檢查 SDK
-window.onload = () => {
-    if (typeof ACRCloud === 'undefined') {
-        statusDiv.innerText = "❌ SDK 載入失敗，請檢查網路";
-        log("錯誤: ACRCloud SDK 未被載入");
+// 備援載入邏輯
+function loadBackupSDK() {
+    log("原始 SDK 載入失敗，嘗試備援路徑...");
+    const script = document.createElement('script');
+    script.src = "https://unpkg.com/acrcloud-webrtc@1.0.1/dist/acrcloud-webrtc.min.js";
+    script.onload = () => { log("備援 SDK 載入成功！"); checkSystem(); };
+    document.head.appendChild(script);
+}
+
+// 檢查環境
+function checkSystem() {
+    const isLine = /Line/i.test(navigator.userAgent);
+    if (isLine) hintMsg.style.display = 'block';
+
+    if (typeof ACRCloud !== 'undefined' || typeof ACRCloudWebRTC !== 'undefined') {
+        statusDiv.innerText = "✅ 引擎就緒，請點擊按鈕啟動";
+        log("辨識引擎已就緒");
     } else {
-        statusDiv.innerText = "✅ 系統準備就緒，請點擊按鈕";
-        log("SDK 載入成功");
+        statusDiv.innerText = "❌ SDK 載入失敗，請檢查網路";
+        log("錯誤: 無法獲取辨識組件");
     }
-};
+}
+
+// 初始化檢查
+window.onload = checkSystem;
 
 const config = {
     host: 'identify-ap-southeast-1.acrcloud.com',
@@ -58,43 +80,58 @@ const config = {
 let acr = null;
 
 startBtn.onclick = async () => {
-    log("按鈕已被點擊");
+    log("啟動按鈕點擊");
     
+    // 再次確認 SDK 名稱 (相容不同版本)
+    const ACRClass = window.ACRCloud || window.ACRCloudWebRTC;
+    
+    if (!ACRClass) {
+        alert("辨識引擎尚未載入，請重新整理頁面");
+        return;
+    }
+
     try {
         statusDiv.innerText = "正在請求麥克風權限...";
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        log("獲取麥克風授權成功");
+        log("麥克風授權成功");
         
-        if (!acr) acr = new ACRCloud(config);
+        if (!acr) acr = new ACRClass(config);
         
-        startBtn.style.display = 'none';
-        runCycle();
+        startBtn.innerText = "偵測中...";
+        startBtn.disabled = true;
+        startBtn.style.background = "#333";
+        
+        runRecognition();
     } catch (err) {
-        log("麥克風錯誤: " + err.name);
-        statusDiv.innerText = "❌ 無法啟動：請允許麥克風權限";
+        log("錯誤: " + err);
+        statusDiv.innerText = "❌ 請允許麥克風權限才能使用";
+        alert("必須允許麥克風權限才能進行音樂辨識");
     }
 };
 
-function runCycle() {
-    statusDiv.innerText = "正在傾聽環境音樂 (約8秒)...";
-    log("開始辨識循環...");
-    
+function runRecognition() {
+    statusDiv.innerText = "正在傾聽環境音 (約 8 秒)...";
+    log("開始採樣辨識...");
+
     acr.identify().then(res => {
-        log("收到回應: " + res.status.msg);
+        log("收到回應: " + (res.status ? res.status.msg : "未知"));
         
-        if (res.status.code === 0) {
+        if (res.status && res.status.code === 0) {
             const m = res.metadata.music[0];
-            resultDiv.innerText = `🎶 ${m.title} - ${m.artists[0].name}`;
-            statusDiv.innerText = "辨識成功！10秒後再次偵測...";
+            resultDiv.innerText = `🎶 ${m.title}`;
+            statusDiv.innerText = `${m.artists[0].name} - 辨識成功！`;
+            log(`成功辨識: ${m.title}`);
         } else {
-            resultDiv.innerText = "聽不清楚，請靠近音源";
-            statusDiv.innerText = "未找到匹配音樂";
+            resultDiv.innerText = "聆聽中...";
+            statusDiv.innerText = "沒聽出歌曲，請靠近音源或大聲一點";
+            log("未比對到音樂");
         }
-        
-        setTimeout(runCycle, 10000);
+
+        log("10 秒後進行下一輪偵測...");
+        setTimeout(runRecognition, 10000);
     }).catch(err => {
-        log("辨識過程崩潰: " + err);
-        setTimeout(runCycle, 5000);
+        log("辨識出錯: " + err);
+        setTimeout(runRecognition, 5000);
     });
 }
 </script>
