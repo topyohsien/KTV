@@ -1,0 +1,12 @@
+.lyric-line {
+  transition: all 0.5s ease;
+  font-size: 1.2rem;
+  opacity: 0.3; /* 未來的歌詞半透明 */
+}
+
+.lyric-line.active {
+  font-size: 2rem;
+  color: #ff0;
+  opacity: 1; /* 當前歌詞高亮 */
+  transform: scale(1.1);
+}
