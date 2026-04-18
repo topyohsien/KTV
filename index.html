@@ -2,51 +2,174 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KTV 修正版</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
-body { background:#000; color:#fff; text-align:center; }
-button { padding:15px 30px; background:#1db954; border:none; border-radius:30px; color:#fff; }
-</style></head><body><h2>🎤 KTV 測試</h2>
+<title>KTV 環境辨識系統</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
+body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
+.card { margin-top:50px; }
+button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; font-size:18px; }
+
+#status { margin-top:20px; }
+#volume { margin-top:10px; color:#aaa; }
+</style></head><body><div class="card">
+<h2>🎤 KTV 辨識系統</h2>
 <button onclick="start()">開始</button>
 <div id="status">待命</div>
-<div id="volume">音量: 0</div><script>
-let audioContext;
-let analyser;
-let dataArray;
+<div id="volume">音量: 0</div>
+</div><script>
+const CONFIG = {
+    host: 'identify-ap-southeast-1.acrcloud.com',
+    access_key: '9ef404c2c6119a39f4228c27d747bddb',
+    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
+};
+
+let running = false;
 
 async function start(){
-    document.getElementById("status").innerText="初始化...";
+    if(running) return;
+    running = true;
 
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // 🔥 手動喚醒（超重要）
+    while(running){
+        await scan();
+        await sleep(5000);
+    }
+}
+
+async function scan(){
+    update("🎤 錄音中 (15秒)...");
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     await audioContext.resume();
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
 
     const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096,1,1);
 
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
+    let chunks = [];
+    let maxAmp = 0;
 
-    source.connect(analyser);
+    processor.onaudioprocess = e => {
+        let data = e.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(data));
 
-    dataArray = new Uint8Array(analyser.fftSize);
+        for(let i=0;i<data.length;i++){
+            let v = Math.abs(data[i]);
+            if(v > maxAmp) maxAmp = v;
+        }
+    };
 
-    monitor();
-}
+    source.connect(processor);
+    processor.connect(audioContext.destination);
 
-function monitor(){
-    analyser.getByteTimeDomainData(dataArray);
+    await sleep(15000);
 
-    let max = 0;
-    for(let i=0;i<dataArray.length;i++){
-        let v = Math.abs(dataArray[i]-128)/128;
-        if(v>max) max=v;
+    stream.getTracks().forEach(t=>t.stop());
+    processor.disconnect();
+
+    document.getElementById("volume").innerText = "音量: " + maxAmp.toFixed(3);
+
+    if(maxAmp < 0.02){
+        update("🔇 太安靜，跳過");
+        return;
     }
 
-    document.getElementById("volume").innerText="音量: "+max.toFixed(3);
+    update("🔍 辨識中...");
 
-    requestAnimationFrame(monitor);
+    const wavBlob = createWav(chunks, 44100);
+
+    const result = await fetchACR(wavBlob);
+
+    if(!result) return;
+
+    const music = result.metadata.music[0];
+    update("🎵 " + music.title + " - " + music.artists[0].name);
+}
+
+function createWav(chunks, sampleRate){
+    let length = chunks.reduce((a,c)=>a+c.length,0);
+    let buffer = new ArrayBuffer(44 + length * 2);
+    let view = new DataView(buffer);
+
+    function writeString(offset, str){
+        for(let i=0;i<str.length;i++){
+            view.setUint8(offset+i, str.charCodeAt(i));
+        }
+    }
+
+    // WAV HEADER
+    writeString(0,'RIFF');
+    view.setUint32(4,36+length*2,true);
+    writeString(8,'WAVE');
+    writeString(12,'fmt ');
+    view.setUint32(16,16,true);
+    view.setUint16(20,1,true);
+    view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true);
+    view.setUint32(28,sampleRate*2,true);
+    view.setUint16(32,2,true);
+    view.setUint16(34,16,true);
+    writeString(36,'data');
+    view.setUint32(40,length*2,true);
+
+    let offset = 44;
+    const gain = 3.5;
+
+    for(let chunk of chunks){
+        for(let i=0;i<chunk.length;i++){
+            let s = chunk[i] * gain;
+            s = Math.max(-1, Math.min(1, s));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            offset += 2;
+        }
+    }
+
+    return new Blob([view], { type:'audio/wav' });
+}
+
+async function fetchACR(blob){
+    try{
+        const ts = Math.floor(Date.now()/1000).toString();
+
+        const sign = CryptoJS.enc.Base64.stringify(
+            CryptoJS.HmacSHA1(
+                ["POST","/v1/identify",CONFIG.access_key,"audio","1",ts].join("\n"),
+                CONFIG.access_secret
+            )
+        );
+
+        const fd = new FormData();
+        fd.append("audio", blob);
+        fd.append("access_key", CONFIG.access_key);
+        fd.append("data_type","audio");
+        fd.append("signature_version","1");
+        fd.append("signature", sign);
+        fd.append("timestamp", ts);
+
+        const res = await fetch(`https://${CONFIG.host}/v1/identify`, {
+            method:"POST",
+            body:fd
+        });
+
+        const data = await res.json();
+
+        if(data.status.code !== 0){
+            update("❌ 辨識失敗 (" + data.status.code + ")");
+            return null;
+        }
+
+        return data;
+
+    }catch(e){
+        update("錯誤: " + e.message);
+        return null;
+    }
+}
+
+function update(t){
+    document.getElementById("status").innerText = t;
+}
+
+function sleep(ms){
+    return new Promise(r=>setTimeout(r,ms));
 }
 </script></body>
 </html>
