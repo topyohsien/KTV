@@ -2,197 +2,51 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KTV 環境辨識系統</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
-body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
-.card { margin-top:40px; }
-button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; font-size:18px; }
-
-#lyrics { margin-top:30px; height:200px; overflow:hidden; font-size:22px; }
-.line { opacity:0.3; }
-.active { color:#1db954; font-size:28px; opacity:1; }
-</style></head><body><div class="card">
-<h2>🎤 KTV 辨識系統</h2>
+<title>KTV 修正版</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
+body { background:#000; color:#fff; text-align:center; }
+button { padding:15px 30px; background:#1db954; border:none; border-radius:30px; color:#fff; }
+</style></head><body><h2>🎤 KTV 測試</h2>
 <button onclick="start()">開始</button>
 <div id="status">待命</div>
-<div id="volume">音量: 0</div>
-</div><div id="lyrics"></div><script>
-const CONFIG = {
-    host: 'identify-ap-southeast-1.acrcloud.com',
-    access_key: '9ef404c2c6119a39f4228c27d747bddb',
-    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
-};
-
-let currentSong = "";
-let lyricsData = [];
-let startTime = 0;
+<div id="volume">音量: 0</div><script>
+let audioContext;
+let analyser;
+let dataArray;
 
 async function start(){
-    while(true){
-        await scan();
-        await sleep(5000);
-    }
-}
+    document.getElementById("status").innerText="初始化...";
 
-async function scan(){
-    update("🎤 錄音中...");
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
     
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+    // 🔥 手動喚醒（超重要）
+    await audioContext.resume();
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
 
     const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096,1,1);
 
-    let chunks=[];
-    let maxAmp=0;
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
 
-    processor.onaudioprocess = e=>{
-        let data = e.inputBuffer.getChannelData(0);
-        chunks.push(new Float32Array(data));
-        for(let i=0;i<data.length;i++){
-            if(Math.abs(data[i])>maxAmp) maxAmp=Math.abs(data[i]);
-        }
-    };
+    source.connect(analyser);
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
+    dataArray = new Uint8Array(analyser.fftSize);
 
-    await sleep(15000);
-
-    stream.getTracks().forEach(t=>t.stop());
-    processor.disconnect();
-
-    document.getElementById("volume").innerText="音量:"+maxAmp.toFixed(3);
-
-    if(maxAmp < 0.02){
-        update("🔇 太安靜，跳過");
-        return;
-    }
-
-    const wav = createWav(chunks,44100);
-
-    update("🔍 辨識中...");
-
-    const res = await fetchACR(wav);
-    if(!res) return;
-
-    const song = res.metadata.music[0].title;
-    const artist = res.metadata.music[0].artists[0].name;
-
-    const key = song + artist;
-
-    if(key === currentSong){
-        update("🎵 同一首歌");
-        return;
-    }
-
-    currentSong = key;
-    update("🎵 "+song+" - "+artist);
-
-    const lrc = await fetchLyrics(song,artist);
-    if(!lrc){
-        update("❌ 沒歌詞");
-        return;
-    }
-
-    lyricsData = parseLRC(lrc);
-    startTime = Date.now()/1000;
-
-    startLyrics();
+    monitor();
 }
 
-function createWav(chunks,sampleRate){
-    let length = chunks.reduce((a,c)=>a+c.length,0);
-    let buffer = new ArrayBuffer(44+length*2);
-    let view = new DataView(buffer);
+function monitor(){
+    analyser.getByteTimeDomainData(dataArray);
 
-    let offset=44;
-    const gain = 4;
-
-    for(let chunk of chunks){
-        for(let i=0;i<chunk.length;i++){
-            let s = Math.max(-1,Math.min(1,chunk[i]*gain));
-            view.setInt16(offset, s*0x7fff, true);
-            offset+=2;
-        }
+    let max = 0;
+    for(let i=0;i<dataArray.length;i++){
+        let v = Math.abs(dataArray[i]-128)/128;
+        if(v>max) max=v;
     }
-    return new Blob([view],{type:'audio/wav'});
+
+    document.getElementById("volume").innerText="音量: "+max.toFixed(3);
+
+    requestAnimationFrame(monitor);
 }
-
-async function fetchACR(blob){
-    try{
-        const ts = Math.floor(Date.now()/1000).toString();
-        const sign = CryptoJS.enc.Base64.stringify(
-            CryptoJS.HmacSHA1(
-                ["POST","/v1/identify",CONFIG.access_key,"audio","1",ts].join("\n"),
-                CONFIG.access_secret
-            )
-        );
-
-        const fd = new FormData();
-        fd.append("audio",blob);
-        fd.append("access_key",CONFIG.access_key);
-        fd.append("data_type","audio");
-        fd.append("signature_version","1");
-        fd.append("signature",sign);
-        fd.append("timestamp",ts);
-
-        const r = await fetch(`https://${CONFIG.host}/v1/identify`,{method:"POST",body:fd});
-        const j = await r.json();
-
-        if(j.status.code!==0){
-            update("❌ 辨識失敗 ("+j.status.code+")");
-            return null;
-        }
-        return j;
-    }catch(e){
-        update("錯誤:"+e);
-        return null;
-    }
-}
-
-// 簡易歌詞 API（無時間軸）
-async function fetchLyrics(song,artist){
-    try{
-        const res = await fetch(`https://api.lyrics.ovh/v1/${artist}/${song}`);
-        const data = await res.json();
-        return data.lyrics;
-    }catch{
-        return null;
-    }
-}
-
-function parseLRC(text){
-    let lines = text.split("\n");
-    let result=[];
-    let time=0;
-
-    for(let l of lines){
-        result.push({time:time,text:l});
-        time+=3;
-    }
-    return result;
-}
-
-function startLyrics(){
-    const el = document.getElementById("lyrics");
-
-    setInterval(()=>{
-        let t = Date.now()/1000 - startTime;
-
-        let current = lyricsData.findLast(l=>l.time<=t);
-
-        if(!current) return;
-
-        el.innerHTML = lyricsData.map(l=>{
-            return `<div class="${l===current?'active':'line'}">${l.text}</div>`;
-        }).join("");
-    },500);
-}
-
-function update(t){
-    document.getElementById("status").innerText=t;
-}
-
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 </script></body>
 </html>
