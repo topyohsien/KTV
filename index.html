@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV Pro - Precise Implementation</title>
+    <title>AI KTV Debug Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
@@ -11,20 +11,19 @@
         :root { --primary: #1db954; --bg: #0b0b0b; }
         body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; }
         button { padding: 15px 35px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
-        #status { margin-top: 20px; color: #aaa; }
+        #status { margin-top: 20px; color: #ffeb3b; }
     </style>
 </head>
 <body>
-
-    <h2>AI KTV 辨識系統 (修正版)</h2>
+    <h2>AI KTV 辨識系統 (深度除錯版)</h2>
     <button id="record-btn">開始辨識音樂</button>
     <div id="status">準備就緒</div>
 
 <script>
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
-        access_key: '66145bf3dff8b9095ee91ec7c674a810', // 已校對
-        access_secret: 'dX7tU0vqulOGClIVZJlBbpnUA1TSow72nB1fDn8a' // 已校對
+        access_key: '66145bf3dff8b9095ee91ec7c674a810',
+        access_secret: 'dX7tU0vqulOGClIVZJlBbpnUA1TSow72nB1fDn8a'
     };
 
     const btn = document.getElementById('record-btn');
@@ -32,44 +31,59 @@
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "🎤 錄音中 (12秒)...";
+        status.innerText = "🎤 錄音啟動中...";
 
         try {
-            // 強制採樣率為 8000 以匹配 API 參數
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
             let chunks = [];
 
-            processor.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            processor.onaudioprocess = (e) => {
+                const data = e.inputBuffer.getChannelData(0);
+                chunks.push(new Float32Array(data));
+            };
+            
             source.connect(processor);
             processor.connect(audioContext.destination);
+            status.innerText = "🎤 正在收音 (12秒)，請靠近音源...";
 
             setTimeout(async () => {
                 stream.getTracks().forEach(t => t.stop());
                 audioContext.close();
-                status.innerText = "🔍 傳送辨識中...";
+                status.innerText = "🔍 正在進行嚴格參數校验與傳送...";
 
+                // 1. 轉換並檢查是否為靜音 (解決 3006 的常見主因)
                 const wavBlob = createWav(chunks, 8000);
+                if (wavBlob.size < 1000) {
+                    throw new Error("錄音數據過小，請檢查麥克風權限");
+                }
+
+                // 2. 嚴格簽章拼接 (不含多餘空格)
                 const timestamp = Math.floor(Date.now() / 1000).toString();
-                
-                // 簽章計算需嚴格遵守路徑與順序
-                const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
+                const method = "POST";
+                const uri = "/v1/identify";
+                const signature_version = "1";
+                const data_type = "audio";
+
+                const strToSign = [method, uri, CONFIG.access_key, data_type, signature_version, timestamp].join("\n");
                 const signature = CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
 
+                // 3. 封裝 FormData
                 const fd = new FormData();
-                fd.append("audio", wavBlob, "recording.wav"); // 必須指定檔案名稱
+                fd.append("audio", wavBlob, "recording.wav");
                 fd.append("access_key", CONFIG.access_key);
-                fd.append("data_type", "audio");
-                fd.append("signature_version", "1");
+                fd.append("data_type", data_type);
+                fd.append("signature_version", signature_version);
                 fd.append("signature", signature);
                 fd.append("sample_rate", "8000");
                 fd.append("timestamp", timestamp);
 
-                console.log(">>> [Debug] 送出音訊大小:", wavBlob.size);
+                console.log(">>> [Debug] 傳送時間戳:", timestamp);
+                console.log(">>> [Debug] 簽章內容:", signature);
 
-                const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
+                const res = await fetch(`https://${CONFIG.host}${uri}`, { method: 'POST', body: fd });
                 const data = await res.json();
                 
                 console.log("--- 伺服器回應 ---", data);
@@ -77,12 +91,14 @@
                 if (data.status.code === 0) {
                     status.innerText = "✅ 辨識成功: " + data.metadata.music[0].title;
                 } else {
-                    status.innerText = `⚠️ 錯誤: ${data.status.msg} (${data.status.code})`;
+                    status.innerText = `⚠️ 伺服器拒絕請求: ${data.status.msg} (${data.status.code})`;
+                    console.error("錯誤細節:", data.status);
                 }
                 btn.disabled = false;
-            }, 12000); // 延長辨識時間
+            }, 12000);
         } catch (err) {
-            status.innerText = "❌ 錯誤: " + err.message;
+            status.innerText = "❌ 發生錯誤: " + err.message;
+            console.error(err);
             btn.disabled = false;
         }
     };
@@ -93,6 +109,7 @@
         let view = new DataView(buffer);
 
         const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+        
         writeString(0, 'RIFF');
         view.setUint32(4, 36 + pcmLength * 2, true);
         writeString(8, 'WAVEfmt ');
@@ -107,13 +124,17 @@
         view.setUint32(40, pcmLength * 2, true);
 
         let offset = 44;
+        let isSilent = true;
         for (let chunk of chunks) {
             for (let i = 0; i < chunk.length; i++) {
                 let s = Math.max(-1, Math.min(1, chunk[i]));
+                if (s !== 0) isSilent = false; // 偵測是否有聲音
                 view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
                 offset += 2;
             }
         }
+        
+        if (isSilent) console.warn("警告：偵測到錄音內容完全靜音！");
         return new Blob([view], { type: 'audio/wav' });
     }
 </script>
