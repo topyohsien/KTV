@@ -2,7 +2,6 @@ const startBtn = document.getElementById('startBtn');
 const statusDiv = document.getElementById('status');
 const resultDiv = document.getElementById('result');
 
-// 這些資訊填入你剛才在 ACRCloud 申請到的 Key
 const config = {
     host: 'identify-ap-southeast-1.acrcloud.com',
     access_key: '9ef404c2c6119a39f4228c27d747bddb',
@@ -10,33 +9,50 @@ const config = {
     type: 'audio'
 };
 
-// 實例化 ACRCloud 辨識器
+// 1. 建立實例
 const acr = new ACRCloud(config);
 
-startBtn.onclick = () => {
-    statusDiv.innerText = "狀態：辨識中...";
-    startRecognitionCycle();
+// 2. 點擊按鈕後的邏輯
+startBtn.onclick = async () => {
+    statusDiv.innerText = "狀態：正在啟動麥克風...";
+    
+    try {
+        // 重要：先測試麥克風權限並啟動
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        statusDiv.innerText = "狀態：辨識中...";
+        startRecognitionCycle();
+    } catch (err) {
+        statusDiv.innerText = "錯誤：請允許麥克風權限";
+        console.error(err);
+    }
 };
 
 function startRecognitionCycle() {
-    // 使用 SDK 進行辨識
+    console.log("開始辨識...");
+    
+    // 使用 SDK 進行辨識 (錄音時間約 4-8 秒)
     acr.identify().then(res => {
-        console.log(res); // 在控制台查看完整結果
-        const metadata = res.metadata;
-
-        if (metadata && metadata.music && metadata.music.length > 0) {
-            const music = metadata.music[0];
+        console.log("辨識結果：", res); 
+        
+        // 檢查回傳狀態碼，0 代表成功
+        if (res.status && res.status.code === 0) {
+            const music = res.metadata.music[0];
             resultDiv.innerText = `辨識成功：${music.title} - ${music.artists[0].name}`;
-            statusDiv.innerText = `狀態：等待下一個 10 秒...`;
+            
+            // 這裡可以準備下一步：處理音樂的播放位置 (db_offset_ms)
+            console.log("目前播放到：" + music.db_offset_ms + "ms");
         } else {
-            resultDiv.innerText = "聽不清楚，再試一次...";
+            resultDiv.innerText = "沒聽出歌曲，再試一次...";
         }
 
-        // 每隔 10 秒循環一次
+        statusDiv.innerText = `狀態：等待下一輪 (10秒後)...`;
+        // 設定 10 秒後再次執行
         setTimeout(startRecognitionCycle, 10000);
         
     }).catch(err => {
-        console.error(err);
-        statusDiv.innerText = "錯誤：" + err;
+        console.error("辨識過程出錯：", err);
+        statusDiv.innerText = "辨識失敗，正在重試...";
+        setTimeout(startRecognitionCycle, 5000); // 失敗的話 5 秒後重試
     });
 }
