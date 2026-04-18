@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI KTV Lyrics Pro</title>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
 
@@ -14,29 +16,28 @@
         :root { --primary: #1db954; --accent: #ffff00; --bg: #0b0b0b; }
         body { 
             background-color: var(--bg); color: white; 
-            font-family: -apple-system, system-ui, sans-serif;
+            font-family: -apple-system, sans-serif;
             margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
-        header { padding: 25px 20px; text-align: center; background: rgba(0,0,0,0.9); border-bottom: 1px solid #333; }
-        button { padding: 12px 35px; font-size: 16px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:disabled { background: #444; color: #888; cursor: not-allowed; }
-        button:active { transform: scale(0.95); opacity: 0.8; }
+        header { padding: 25px 20px; text-align: center; border-bottom: 1px solid #333; }
+        button { padding: 12px 35px; font-size: 16px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
+        button:disabled { background: #444; color: #888; }
         #status { font-size: 13px; color: #aaa; margin-top: 12px; }
         #lyrics-window { flex: 1; overflow-y: auto; scroll-behavior: smooth; padding: 40vh 0; text-align: center; }
-        .lyric-line { padding: 15px 25px; font-size: 1.4rem; opacity: 0.2; transition: all 0.4s; }
-        .lyric-line.active { opacity: 1; color: var(--accent); font-size: 2rem; font-weight: bold; transform: scale(1.05); }
+        .lyric-line { padding: 15px; font-size: 1.4rem; opacity: 0.2; transition: 0.4s; }
+        .lyric-line.active { opacity: 1; color: var(--accent); font-size: 2rem; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <header>
     <button id="record-btn" disabled>正在初始化...</button>
-    <div id="status">檢查本地 SDK 中...</div>
+    <div id="status">檢查本地組件中...</div>
 </header>
 
 <div id="lyrics-window">
     <div id="lyrics-container">
-        <p class="lyric-line active">請先點擊上方按鈕開始辨識</p>
+        <p class="lyric-line active">請點擊按鈕開始同步</p>
     </div>
 </div>
 
@@ -51,76 +52,54 @@
     let lyricsData = [];
     let startTime = 0;
 
-    // 1. 初始化引擎
     function init() {
         const btn = document.getElementById('record-btn');
         const status = document.getElementById('status');
-        
-        // 偵測從 acrcloud.js 載入的類別
         const Lib = window.ACRCloudWebRTC || window.ACRCloud;
         
         if (Lib) {
-            console.log("✅ SDK 偵測成功");
             acrDetector = new Lib(ACR_CONFIG);
             btn.disabled = false;
             btn.innerText = "開始同步歌詞";
-            status.innerText = "✅ 引擎就緒 (本地模式)";
+            status.innerText = "✅ 引擎就緒";
             btn.onclick = startRecognition;
         } else {
-            status.innerText = "❌ 找不到 acrcloud.js，請確認檔案已上傳";
-            console.error("SDK 載入失敗");
+            status.innerText = "❌ 找不到 acrcloud.js";
         }
     }
 
-    // 2. 啟動辨識
     async function startRecognition() {
         const status = document.getElementById('status');
-        const btn = document.getElementById('record-btn');
-        
-        btn.disabled = true;
-        status.innerText = "🎤 正在聆聽音樂中...";
-
+        status.innerText = "🎤 正在聆聽 6 秒鐘...";
         try {
             const result = await acrDetector.identify();
             if (result?.status?.code === 0) {
                 const track = result.metadata.music[0];
                 status.innerText = `🎵 辨識成功：${track.title}`;
-                await fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
+                fetchLyrics(track.title, track.artists[0].name, track.play_offset_ms / 1000);
             } else {
-                status.innerText = "⚠️ 沒聽清楚，請靠近音源再試一次";
-                btn.disabled = false;
+                status.innerText = "⚠️ 錯誤代碼：" + result.status.code + " " + result.status.msg;
             }
-        } catch (err) {
-            status.innerText = "❌ 錯誤：" + err.message;
-            btn.disabled = false;
-        }
+        } catch (e) { status.innerText = "❌ 系統錯誤：" + e.message; }
     }
 
-    // 3. 抓取歌詞
     async function fetchLyrics(title, artist, offset) {
         try {
             const res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(title + ' ' + artist)}`);
             const data = await res.json();
             const track = data.find(t => t.syncedLyrics);
-            if (track) {
-                parseLRC(track.syncedLyrics, offset);
-                document.getElementById('record-btn').disabled = false;
-            } else {
-                document.getElementById('lyrics-container').innerHTML = '<p class="lyric-line active">暫無同步歌詞</p>';
-            }
-        } catch (e) {
-            document.getElementById('status').innerText = "❌ 歌詞載入失敗";
-        }
+            if (track) parseLRC(track.syncedLyrics, offset);
+            else document.getElementById('status').innerText = "❌ 找不到此歌曲的同步歌詞";
+        } catch (e) { console.error("歌詞載入失敗"); }
     }
 
-    // 4. 解析歌詞
     function parseLRC(lrc, offset) {
         lyricsData = lrc.split('\n').map(line => {
             const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
-            if (m) return { time: parseInt(m[1])*60 + parseFloat(m[2]), text: m[3].trim() };
+            return m ? { time: parseInt(m[1])*60 + parseFloat(m[2]), text: m[3].trim() } : null;
         }).filter(Boolean);
         renderLyrics();
-        startSync(offset);
+        sync(offset);
     }
 
     function renderLyrics() {
@@ -128,21 +107,16 @@
             `<div id="line-${i}" class="lyric-line">${l.text}</div>`).join('');
     }
 
-    // 5. 時間同步
-    function startSync(offset) {
+    function sync(offset) {
         startTime = performance.now() - (offset * 1000);
-        let lastIdx = -1;
-        
         function update() {
             const now = (performance.now() - startTime) / 1000;
-            let idx = lyricsData.findLastIndex(l => now >= l.time);
-            
-            if (idx !== -1 && idx !== lastIdx) {
+            const idx = lyricsData.findLastIndex(l => now >= l.time);
+            if (idx !== -1) {
                 const lines = document.querySelectorAll('.lyric-line');
                 lines.forEach((l, i) => l.classList.toggle('active', i === idx));
-                const activeLine = document.getElementById(`line-${idx}`);
-                if (activeLine) activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                lastIdx = idx;
+                const active = document.getElementById(`line-${idx}`);
+                if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             requestAnimationFrame(update);
         }
