@@ -2,19 +2,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KTV 環境辨識系統</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
-body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
-.card { margin-top:50px; }
-button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; font-size:18px; }
-
-#status { margin-top:20px; }
-#volume { margin-top:10px; color:#aaa; }
-</style></head><body><div class="card">
-<h2>🎤 KTV 辨識系統</h2>
+<title>KTV 穩定辨識版</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
+body { background:#000; color:#fff; text-align:center; font-family:sans-serif; }
+button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; }
+</style></head><body><h2>🎤 KTV 穩定版</h2>
 <button onclick="start()">開始</button>
 <div id="status">待命</div>
-<div id="volume">音量: 0</div>
-</div><script>
+<div id="volume">音量: 0</div><script>
 const CONFIG = {
     host: 'identify-ap-southeast-1.acrcloud.com',
     access_key: '9ef404c2c6119a39f4228c27d747bddb',
@@ -28,64 +22,67 @@ async function start(){
     running = true;
 
     while(running){
-        await scan();
-        await sleep(5000);
+        await recordAndIdentify();
+        await sleep(4000);
     }
 }
 
-async function scan(){
-    update("🎤 錄音中 (15秒)...");
+async function recordAndIdentify(){
+    update("🎤 錄音中...");
 
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     await audioContext.resume();
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-
     const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096,1,1);
 
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+
+    source.connect(analyser);
+
+    let data = new Float32Array(analyser.fftSize);
     let chunks = [];
     let maxAmp = 0;
 
-    processor.onaudioprocess = e => {
-        let data = e.inputBuffer.getChannelData(0);
+    let startTime = Date.now();
+
+    while(Date.now() - startTime < 12000){
+        analyser.getFloatTimeDomainData(data);
+
         chunks.push(new Float32Array(data));
 
         for(let i=0;i<data.length;i++){
             let v = Math.abs(data[i]);
             if(v > maxAmp) maxAmp = v;
         }
-    };
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
-
-    await sleep(15000);
+        await sleep(50);
+    }
 
     stream.getTracks().forEach(t=>t.stop());
-    processor.disconnect();
 
     document.getElementById("volume").innerText = "音量: " + maxAmp.toFixed(3);
 
-    if(maxAmp < 0.02){
-        update("🔇 太安靜，跳過");
+    if(maxAmp < 0.03){
+        update("🔇 太小聲，跳過");
         return;
     }
 
     update("🔍 辨識中...");
 
-    const wavBlob = createWav(chunks, 44100);
+    const wav = createWav(chunks, 44100);
 
-    const result = await fetchACR(wavBlob);
+    const result = await fetchACR(wav);
 
-    if(!result) return;
-
-    const music = result.metadata.music[0];
-    update("🎵 " + music.title + " - " + music.artists[0].name);
+    if(result){
+        const m = result.metadata.music[0];
+        update("🎵 " + m.title + " - " + m.artists[0].name);
+    }
 }
 
 function createWav(chunks, sampleRate){
-    let length = chunks.reduce((a,c)=>a+c.length,0);
+    let length = chunks.length * chunks[0].length;
     let buffer = new ArrayBuffer(44 + length * 2);
     let view = new DataView(buffer);
 
@@ -95,7 +92,6 @@ function createWav(chunks, sampleRate){
         }
     }
 
-    // WAV HEADER
     writeString(0,'RIFF');
     view.setUint32(4,36+length*2,true);
     writeString(8,'WAVE');
@@ -111,18 +107,18 @@ function createWav(chunks, sampleRate){
     view.setUint32(40,length*2,true);
 
     let offset = 44;
-    const gain = 3.5;
+    const gain = 5; // 🔥 更強增益
 
     for(let chunk of chunks){
         for(let i=0;i<chunk.length;i++){
             let s = chunk[i] * gain;
             s = Math.max(-1, Math.min(1, s));
-            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-            offset += 2;
+            view.setInt16(offset, s<0?s*0x8000:s*0x7FFF, true);
+            offset+=2;
         }
     }
 
-    return new Blob([view], { type:'audio/wav' });
+    return new Blob([view], {type:'audio/wav'});
 }
 
 async function fetchACR(blob){
@@ -144,22 +140,18 @@ async function fetchACR(blob){
         fd.append("signature", sign);
         fd.append("timestamp", ts);
 
-        const res = await fetch(`https://${CONFIG.host}/v1/identify`, {
-            method:"POST",
-            body:fd
-        });
-
+        const res = await fetch(`https://${CONFIG.host}/v1/identify`, {method:"POST", body:fd});
         const data = await res.json();
 
         if(data.status.code !== 0){
-            update("❌ 辨識失敗 (" + data.status.code + ")");
+            update("❌ 失敗 (" + data.status.code + ")");
             return null;
         }
 
         return data;
 
     }catch(e){
-        update("錯誤: " + e.message);
+        update("錯誤:"+e.message);
         return null;
     }
 }
