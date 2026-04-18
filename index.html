@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV 辨識系統 - 優化版</title>
+    <title>AI KTV 辨識系統 - 最終強收版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>window.vConsole = new window.VConsole();</script>
     <style>
         :root { --primary: #1db954; --bg: #0b0b0b; }
         body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; justify-content: center; }
-        .card { background: #181818; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; }
-        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .card { background: #181818; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 1.1rem; transition: 0.2s; }
         button:disabled { background: #444; }
-        #status { margin-top: 25px; color: #b3b3b3; font-size: 0.95rem; line-height: 1.5; }
+        #status { margin-top: 25px; color: #b3b3b3; font-size: 0.95rem; line-height: 1.6; }
+        .result-box { color: var(--primary); font-size: 1.2rem; font-weight: bold; background: #282828; padding: 15px; border-radius: 10px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="card">
         <h2>AI KTV 辨識系統</h2>
-        <p style="color: #888; font-size: 0.8rem;">請靠近音源並調高音量</p>
+        <p style="color: #888; font-size: 0.8rem;">收音靈敏度已調至最高，請對準喇叭</p>
         <button id="record-btn">開始辨識音樂</button>
         <div id="status">準備就緒</div>
     </div>
@@ -37,13 +38,17 @@
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "🎤 初始化麥克風...";
+        status.innerText = "🎤 正在喚醒麥克風...";
 
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
             if (audioContext.state === 'suspended') await audioContext.resume();
 
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // 請求最高品質音訊
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+            });
+            
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
             let chunks = [];
@@ -54,15 +59,15 @@
             
             source.connect(processor);
             processor.connect(audioContext.destination);
-            status.innerText = "正在錄音並分析中... (12秒)";
+            status.innerHTML = "<span style='color:#1db954'>● 正在聆聽音樂中 (12秒)...</span>";
 
             setTimeout(async () => {
                 stream.getTracks().forEach(t => t.stop());
                 processor.disconnect();
-                status.innerText = "🔍 提取音訊指紋中...";
+                status.innerText = "🔍 正在進行特徵比對...";
 
-                // 核心優化：增加音量增益處理，減少 2004 錯誤
-                const wavData = createWavStandard(chunks, 8000);
+                // 使用暴力增益 WAV 封裝
+                const wavData = createWavExtremeGain(chunks, 8000);
                 
                 const timestamp = Math.floor(Date.now() / 1000).toString();
                 const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
@@ -77,46 +82,47 @@
                 fd.append("sample_rate", "8000");
                 fd.append("timestamp", timestamp);
 
-                console.log(`>>> [偵錯] 大小: ${wavData.blob.size}, 有效振幅: ${wavData.maxAmp.toFixed(4)}`);
+                console.log(`>>> [偵錯] 原始最大振幅: ${wavData.originalMax.toFixed(4)}, 增益後大小: ${wavData.blob.size}`);
 
                 const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
                 const data = await res.json();
                 
                 if (data.status.code === 0) {
                     const music = data.metadata.music[0];
-                    status.innerHTML = `<b style="color:#1db954">✅ 辨識成功</b><br>歌名：${music.title}<br>歌手：${music.artists[0].name}`;
+                    status.innerHTML = `
+                        <div class="result-box">✅ 辨識成功</div>
+                        <div style="margin-top:10px;"><b>${music.title}</b></div>
+                        <div style="color:#888">${music.artists[0].name}</div>
+                    `;
                 } else if (data.status.code === 2004) {
-                    status.innerHTML = "⚠️ 訊號太弱 (2004)<br>請將手機更靠近音響，或將音樂開大聲點再試一次。";
-                } else if (data.status.code === 1001) {
-                    status.innerText = "🔇 沒聽過這首歌，請換一首試試。";
+                    status.innerHTML = "⚠️ 訊號依然太弱 (2004)<br>即便已補強音量，AI 仍無法聽清楚。<br>請嘗試換一首歌，或手機直接貼近喇叭。";
                 } else {
-                    status.innerText = `伺服器回報: ${data.status.msg} (${data.status.code})`;
+                    status.innerText = `辨識失敗: ${data.status.msg} (${data.status.code})`;
                 }
                 btn.disabled = false;
                 audioContext.close();
             }, 12000);
         } catch (err) {
-            status.innerText = "錯誤: " + err.message;
+            status.innerText = "發生錯誤: " + err.message;
             btn.disabled = false;
         }
     };
 
-    // 標準化 WAV 封裝與自動增益
-    function createWavStandard(chunks, sampleRate) {
+    // 暴力增益函數：針對 0.09 等微弱訊號進行 8 倍以上放大
+    function createWavExtremeGain(chunks, sampleRate) {
         let pcmLength = chunks.reduce((acc, curr) => acc + curr.length, 0);
         let buffer = new ArrayBuffer(44 + pcmLength * 2);
         let view = new DataView(buffer);
-        let maxAmp = 0;
+        let originalMax = 0;
 
-        // 找出最大振幅以進行增益優化
         for (let chunk of chunks) {
             for (let i = 0; i < chunk.length; i++) {
-                if (Math.abs(chunk[i]) > maxAmp) maxAmp = Math.abs(chunk[i]);
+                if (Math.abs(chunk[i]) > originalMax) originalMax = Math.abs(chunk[i]);
             }
         }
 
-        // 自動增益係數（如果聲音太小就放大，但不超過 1.0）
-        const gain = maxAmp < 0.1 ? 0.8 / (maxAmp || 1) : 1.0;
+        // 暴力放大係數：如果低於 0.1，則放大到接近 0.9
+        const gain = originalMax < 0.1 ? 0.9 / (originalMax || 1) : 1.2;
 
         const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
         writeString(0, 'RIFF');
@@ -135,12 +141,12 @@
         let offset = 44;
         for (let chunk of chunks) {
             for (let i = 0; i < chunk.length; i++) {
-                let s = Math.max(-1, Math.min(1, chunk[i] * gain)); // 套用增益
+                let s = Math.max(-1, Math.min(1, chunk[i] * gain));
                 view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
                 offset += 2;
             }
         }
-        return { blob: new Blob([view], { type: 'audio/wav' }), maxAmp: maxAmp };
+        return { blob: new Blob([view], { type: 'audio/wav' }), originalMax: originalMax };
     }
 </script>
 </body>
