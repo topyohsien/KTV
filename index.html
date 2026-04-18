@@ -1,167 +1,22 @@
-<!DOCTYPE html><html lang="zh-TW">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KTV 穩定辨識版</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
-body { background:#000; color:#fff; text-align:center; font-family:sans-serif; }
-button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; }
-</style></head><body><h2>🎤 KTV 穩定版</h2>
-<button onclick="start()">開始</button>
-<div id="status">待命</div>
-<div id="volume">音量: 0</div><script>
-const CONFIG = {
-    host: 'identify-ap-southeast-1.acrcloud.com',
-    access_key: '9ef404c2c6119a39f4228c27d747bddb',
-    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
-};
+    <meta charset="UTF-8">
+    <title>我的網頁版 Shazam</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding-top: 50px; }
+        #status { color: blue; margin: 20px; }
+        #result { font-weight: bold; font-size: 1.5em; color: green; }
+    </style>
+</head>
+<body>
+    <h1>音樂辨識與滾動歌詞</h1>
+    <button id="startBtn">開始每 10 秒偵測一次</button>
+    <div id="status">目前狀態：靜止</div>
+    <div id="result">尚未辨識</div>
+    <div id="lyrics" style="margin-top:20px; color: gray;">(歌詞預計顯示區)</div>
 
-let running = false;
-
-async function start(){
-    if(running) return;
-    running = true;
-
-    while(running){
-        await recordAndIdentify();
-        await sleep(4000);
-    }
-}
-
-async function recordAndIdentify(){
-    update("🎤 錄音中...");
-
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    await audioContext.resume();
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-    const source = audioContext.createMediaStreamSource(stream);
-
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-
-    source.connect(analyser);
-
-    let data = new Float32Array(analyser.fftSize);
-    let chunks = [];
-    let maxAmp = 0;
-
-    let startTime = Date.now();
-
-    while(Date.now() - startTime < 12000){
-        analyser.getFloatTimeDomainData(data);
-
-        chunks.push(new Float32Array(data));
-
-        for(let i=0;i<data.length;i++){
-            let v = Math.abs(data[i]);
-            if(v > maxAmp) maxAmp = v;
-        }
-
-        await sleep(50);
-    }
-
-    stream.getTracks().forEach(t=>t.stop());
-
-    document.getElementById("volume").innerText = "音量: " + maxAmp.toFixed(3);
-
-    if(maxAmp < 0.03){
-        update("🔇 太小聲，跳過");
-        return;
-    }
-
-    update("🔍 辨識中...");
-
-    const wav = createWav(chunks, 44100);
-
-    const result = await fetchACR(wav);
-
-    if(result){
-        const m = result.metadata.music[0];
-        update("🎵 " + m.title + " - " + m.artists[0].name);
-    }
-}
-
-function createWav(chunks, sampleRate){
-    let length = chunks.length * chunks[0].length;
-    let buffer = new ArrayBuffer(44 + length * 2);
-    let view = new DataView(buffer);
-
-    function writeString(offset, str){
-        for(let i=0;i<str.length;i++){
-            view.setUint8(offset+i, str.charCodeAt(i));
-        }
-    }
-
-    writeString(0,'RIFF');
-    view.setUint32(4,36+length*2,true);
-    writeString(8,'WAVE');
-    writeString(12,'fmt ');
-    view.setUint32(16,16,true);
-    view.setUint16(20,1,true);
-    view.setUint16(22,1,true);
-    view.setUint32(24,sampleRate,true);
-    view.setUint32(28,sampleRate*2,true);
-    view.setUint16(32,2,true);
-    view.setUint16(34,16,true);
-    writeString(36,'data');
-    view.setUint32(40,length*2,true);
-
-    let offset = 44;
-    const gain = 5; // 🔥 更強增益
-
-    for(let chunk of chunks){
-        for(let i=0;i<chunk.length;i++){
-            let s = chunk[i] * gain;
-            s = Math.max(-1, Math.min(1, s));
-            view.setInt16(offset, s<0?s*0x8000:s*0x7FFF, true);
-            offset+=2;
-        }
-    }
-
-    return new Blob([view], {type:'audio/wav'});
-}
-
-async function fetchACR(blob){
-    try{
-        const ts = Math.floor(Date.now()/1000).toString();
-
-        const sign = CryptoJS.enc.Base64.stringify(
-            CryptoJS.HmacSHA1(
-                ["POST","/v1/identify",CONFIG.access_key,"audio","1",ts].join("\n"),
-                CONFIG.access_secret
-            )
-        );
-
-        const fd = new FormData();
-        fd.append("audio", blob);
-        fd.append("access_key", CONFIG.access_key);
-        fd.append("data_type","audio");
-        fd.append("signature_version","1");
-        fd.append("signature", sign);
-        fd.append("timestamp", ts);
-
-        const res = await fetch(`https://${CONFIG.host}/v1/identify`, {method:"POST", body:fd});
-        const data = await res.json();
-
-        if(data.status.code !== 0){
-            update("❌ 失敗 (" + data.status.code + ")");
-            return null;
-        }
-
-        return data;
-
-    }catch(e){
-        update("錯誤:"+e.message);
-        return null;
-    }
-}
-
-function update(t){
-    document.getElementById("status").innerText = t;
-}
-
-function sleep(ms){
-    return new Promise(r=>setTimeout(r,ms));
-}
-</script></body>
+    <script src="https://sdk-os.acrcloud.com/static/acrcloud-webrtc-target.js"></script>
+    <script src="script.js"></script>
+</body>
 </html>
