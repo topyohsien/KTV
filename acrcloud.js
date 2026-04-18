@@ -1,2 +1,42 @@
-/* ACRCloud WebRTC SDK v1.0.6 - Correct HMAC-SHA1 */
-!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t=t||self).ACRCloudWebRTC=e()}(this,function(){"use strict";return function(){function t(t){this.host=t.host,this.access_key=t.access_key,this.access_secret=t.access_secret,this.endpoint="https://"+t.host+"/v1/identify"}var e=t.prototype;return e.identify=function(){var t=this;return new Promise(function(e,n){navigator.mediaDevices.getUserMedia({audio:!0}).then(function(r){var i=new (window.AudioContext||window.webkitAudioContext)({sampleRate:8e3}),o=i.createMediaStreamSource(r),a=i.createScriptProcessor(4096,1,1);o.connect(a),a.connect(i.destination);var s=[],c=0;a.onaudioprocess=function(t){var e=t.inputBuffer.getChannelData(0);s.push(new Float32Array(e)),c+=e.length},setTimeout(function(){r.getTracks().forEach(function(t){t.stop()}),i.close();var o=new Int16Array(c),a=0;s.forEach(function(t){for(var e=0;e<t.length;e++)o[a++]=32767*t[e]});t._send(o.buffer).then(e).catch(n)},6e3)}).catch(n)})},e._send=function(t){var e=this,n=Math.floor((new Date).getTime()/1000),r="POST\n/v1/identify\n"+this.access_key+"\naudio\n1\n"+n;var i=CryptoJS.HmacSHA1(r,this.access_secret).toString(CryptoJS.enc.Base64);var o=new FormData;o.append("audio",new Blob([t],{type:"sampleRate=8000;channels=1"}));o.append("access_key",this.access_key);o.append("data_type","audio");o.append("signature_version","1");o.append("signature",i);o.append("sample_rate","8000");o.append("timestamp",n);return fetch(this.endpoint,{method:"POST",body:o}).then(function(t){return t.json()})},t}()});
+const startBtn = document.getElementById('startBtn');
+const statusDiv = document.getElementById('status');
+const resultDiv = document.getElementById('result');
+
+// 這些資訊填入你剛才在 ACRCloud 申請到的 Key
+const config = {
+    host: '你的_HOST',
+    access_key: '你的_ACCESS_KEY',
+    access_secret: '你的_ACCESS_SECRET',
+    type: 'audio'
+};
+
+// 實例化 ACRCloud 辨識器
+const acr = new ACRCloud(config);
+
+startBtn.onclick = () => {
+    statusDiv.innerText = "狀態：辨識中...";
+    startRecognitionCycle();
+};
+
+function startRecognitionCycle() {
+    // 使用 SDK 進行辨識
+    acr.identify().then(res => {
+        console.log(res); // 在控制台查看完整結果
+        const metadata = res.metadata;
+
+        if (metadata && metadata.music && metadata.music.length > 0) {
+            const music = metadata.music[0];
+            resultDiv.innerText = `辨識成功：${music.title} - ${music.artists[0].name}`;
+            statusDiv.innerText = `狀態：等待下一個 10 秒...`;
+        } else {
+            resultDiv.innerText = "聽不清楚，再試一次...";
+        }
+
+        // 每隔 10 秒循環一次
+        setTimeout(startRecognitionCycle, 10000);
+        
+    }).catch(err => {
+        console.error(err);
+        statusDiv.innerText = "錯誤：" + err;
+    });
+}
