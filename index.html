@@ -3,32 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV Lyrics Pro</title>
+    <title>AI KTV Pro - Debug Mode</title>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>window.vConsole = new window.VConsole();</script>
+
     <style>
         :root { --primary: #1db954; --accent: #ffff00; --bg: #0b0b0b; }
-        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        header { padding: 25px 20px; text-align: center; border-bottom: 1px solid #333; }
-        button { padding: 12px 35px; font-size: 16px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
-        #status { font-size: 13px; color: #aaa; margin-top: 12px; }
-        #lyrics-window { flex: 1; overflow-y: auto; scroll-behavior: smooth; padding: 40vh 0; text-align: center; }
+        body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        button:disabled { background: #444; }
+        #status { margin-top: 20px; color: #aaa; font-size: 14px; }
+        #lyrics-window { flex: 1; overflow-y: auto; scroll-behavior: smooth; padding: 40vh 0; text-align: center; margin-top: 20px; }
         .lyric-line { padding: 15px; font-size: 1.4rem; opacity: 0.2; transition: 0.4s; }
         .lyric-line.active { opacity: 1; color: var(--accent); font-size: 2rem; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<header>
-    <button id="record-btn">開始同步歌詞</button>
-    <div id="status">準備就緒</div>
-</header>
+    <header>
+        <button id="record-btn">開始同步歌詞</button>
+        <div id="status">準備就緒</div>
+    </header>
 
-<div id="lyrics-window">
-    <div id="lyrics-container"><p class="lyric-line active">點擊按鈕後靠近音源</p></div>
-</div>
+    <div id="lyrics-window">
+        <div id="lyrics-container"><p class="lyric-line active">點擊按鈕後靠近音源</p></div>
+    </div>
 
 <script>
-    // 這是您確認過完全正確的金鑰組
+    // 使用您提供的新金鑰組 [8254.jpg]
     const CONFIG = {
         host: 'identify-ap-southeast-1.acrcloud.com',
         access_key: '66145bf3dff8b9095ee91ec7c674a810', 
@@ -42,7 +47,8 @@
 
     btn.onclick = async () => {
         btn.disabled = true;
-        status.innerText = "🎤 錄音辨識中 (8秒)...";
+        status.innerText = "🎤 錄音中 (8秒)...";
+        console.log(">>> [Debug] 錄音開始");
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -58,15 +64,23 @@
             setTimeout(async () => {
                 stream.getTracks().forEach(t => t.stop());
                 audioContext.close();
-                status.innerText = "🔍 正在搜尋歌曲...";
+                status.innerText = "🔍 正在驗證並辨識...";
                 
                 const timestamp = Math.floor(Date.now() / 1000).toString();
                 const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
                 const signature = CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret).toString(CryptoJS.enc.Base64);
 
+                console.log("--- 發送資訊 ---");
+                console.log("Timestamp:", timestamp);
+                console.log("Signature:", signature);
+
                 const fd = new FormData();
-                // 修正了音訊傳輸的部分，確保不再出現 3006
-                fd.append("audio", new Blob([convertToPcm(chunks)], { type: 'audio/wav' }));
+                const audioBlob = new Blob([convertToPcm(chunks)], { type: 'audio/wav' });
+                
+                // 檢查音訊是否為空，避免 3006
+                console.log("音訊大小:", audioBlob.size);
+
+                fd.append("audio", audioBlob);
                 fd.append("access_key", CONFIG.access_key);
                 fd.append("data_type", "audio");
                 fd.append("signature_version", "1");
@@ -76,6 +90,7 @@
 
                 const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
                 const data = await res.json();
+                console.log("--- 伺服器回傳 ---", data);
 
                 if (data.status.code === 0) {
                     const track = data.metadata.music[0];
@@ -87,7 +102,8 @@
                 }
             }, 8000);
         } catch (err) {
-            status.innerText = "❌ 麥克風啟動失敗";
+            console.error(err);
+            status.innerText = "❌ 錄音啟動失敗";
             btn.disabled = false;
         }
     };
