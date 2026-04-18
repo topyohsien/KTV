@@ -4,7 +4,7 @@ const resultDiv = document.getElementById('result');
 
 // 這些資訊填入你剛才在 ACRCloud 申請到的 Key
 const config = {
-    host: '你的_HOST',
+    host: 'identify-ap-southeast-1.acrcloud.com',
     access_key: '9ef404c2c6119a39f4228c27d747bddb',
     access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0',
     type: 'audio'
