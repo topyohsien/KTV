@@ -1,142 +1,198 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+<!DOCTYPE html><html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI KTV 辨識系統 - 修正版</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
-    <script>window.vConsole = new window.VConsole();</script>
-    <style>
-        :root { --primary: #1db954; --bg: #0b0b0b; }
-        body { background: var(--bg); color: white; font-family: sans-serif; text-align: center; padding: 20px; }
-        .card { background: #181818; padding: 30px; border-radius: 20px; margin-top: 50px; border: 1px solid #333; }
-        button { padding: 18px 40px; border-radius: 50px; border: none; background: var(--primary); color: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; }
-        #status { margin-top: 25px; color: #b3b3b3; line-height: 1.6; }
-    </style>
-</head>
-<body>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KTV 環境辨識系統</title><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script><style>
+body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
+.card { margin-top:40px; }
+button { padding:15px 30px; border-radius:30px; background:#1db954; border:none; color:#fff; font-size:18px; }
 
-    <div class="card">
-        <h2>AI KTV 辨識系統</h2>
-        <p id="debug-amp" style="color: #555; font-size: 0.8rem;">等待開始...</p>
-        <button id="record-btn">開始辨識音樂</button>
-        <div id="status">準備就緒</div>
-    </div>
+#lyrics { margin-top:30px; height:200px; overflow:hidden; font-size:22px; }
+.line { opacity:0.3; }
+.active { color:#1db954; font-size:28px; opacity:1; }
+</style></head><body><div class="card">
+<h2>🎤 KTV 辨識系統</h2>
+<button onclick="start()">開始</button>
+<div id="status">待命</div>
+<div id="volume">音量: 0</div>
+</div><div id="lyrics"></div><script>
+const CONFIG = {
+    host: 'identify-ap-southeast-1.acrcloud.com',
+    access_key: '9ef404c2c6119a39f4228c27d747bddb',
+    access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
+};
 
-<script>
-    const CONFIG = {
-        host: 'identify-ap-southeast-1.acrcloud.com',
-        access_key: '9ef404c2c6119a39f4228c27d747bddb',
-        access_secret: 'mSz4da3dhnib6Nxg0b3yC10tL6Ch9jtqEIMfNaU0'
-    };
+let currentSong = "";
+let lyricsData = [];
+let startTime = 0;
 
-    const btn = document.getElementById('record-btn');
-    const status = document.getElementById('status');
-    const debugAmp = document.getElementById('debug-amp');
-
-    btn.onclick = async () => {
-        btn.disabled = true;
-        status.innerText = "🎤 初始化收音...";
-
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
-            });
-
-            const source = audioContext.createMediaStreamSource(stream);
-            const processor = audioContext.createScriptProcessor(4096, 1, 1);
-            let chunks = [];
-
-            processor.onaudioprocess = (e) => {
-                chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-            };
-            
-            source.connect(processor);
-            processor.connect(audioContext.destination);
-            status.innerText = "錄音中 (12秒)... 請保持正常播放";
-
-            setTimeout(async () => {
-                stream.getTracks().forEach(t => t.stop());
-                processor.disconnect();
-                status.innerText = "🔍 正在精準分析波形...";
-
-                // 使用防止破音的封裝邏輯
-                const wavData = createSafeWav(chunks, 16000);
-                debugAmp.innerText = `最後錄製振幅: ${wavData.maxAmp.toFixed(4)}`;
-
-                const timestamp = Math.floor(Date.now() / 1000).toString();
-                const strToSign = ["POST", "/v1/identify", CONFIG.access_key, "audio", "1", timestamp].join("\n");
-                const signature = CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA1(strToSign, CONFIG.access_secret));
-
-                const fd = new FormData();
-                fd.append("audio", wavData.blob, "rec.wav");
-                fd.append("access_key", CONFIG.access_key);
-                fd.append("data_type", "audio"); 
-                fd.append("signature_version", "1");
-                fd.append("signature", signature);
-                fd.append("sample_rate", "16000");
-                fd.append("timestamp", timestamp);
-
-                const res = await fetch(`https://${CONFIG.host}/v1/identify`, { method: 'POST', body: fd });
-                const data = await res.json();
-                
-                if (data.status.code === 0) {
-                    const m = data.metadata.music[0];
-                    status.innerHTML = `<b style="color:#1db954">辨識成功！</b><br>歌名：${m.title}<br>歌手：${m.artists[0].name}`;
-                } else {
-                    status.innerHTML = `⚠️ 辨識失敗 (${data.status.code})<br>${data.status.msg}`;
-                }
-                btn.disabled = false;
-                audioContext.close();
-            }, 12000);
-        } catch (err) {
-            status.innerText = "錯誤: " + err.message;
-            btn.disabled = false;
-        }
-    };
-
-    function createSafeWav(chunks, sampleRate) {
-        let pcmLength = chunks.reduce((acc, curr) => acc + curr.length, 0);
-        let buffer = new ArrayBuffer(44 + pcmLength * 2);
-        let view = new DataView(buffer);
-        let maxAmp = 0;
-
-        for (let chunk of chunks) {
-            for (let i = 0; i < chunk.length; i++) {
-                if (Math.abs(chunk[i]) > maxAmp) maxAmp = Math.abs(chunk[i]);
-            }
-        }
-
-        // 核心修正：強制限幅在 0.8，避免 1.0 導致的指紋生成失敗
-        const factor = maxAmp > 0.8 ? 0.8 / maxAmp : 1.0;
-
-        const writeString = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
-        writeString(0, 'RIFF');
-        view.setUint32(4, 36 + pcmLength * 2, true);
-        writeString(8, 'WAVEfmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true); 
-        view.setUint16(22, 1, true); 
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeString(36, 'data');
-        view.setUint32(40, pcmLength * 2, true);
-
-        let offset = 44;
-        for (let chunk of chunks) {
-            for (let i = 0; i < chunk.length; i++) {
-                // 套用安全係數
-                let s = Math.max(-1, Math.min(1, chunk[i] * factor));
-                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-                offset += 2;
-            }
-        }
-        return { blob: new Blob([view], { type: 'audio/wav' }), maxAmp: maxAmp };
+async function start(){
+    while(true){
+        await scan();
+        await sleep(5000);
     }
-</script>
-</body>
+}
+
+async function scan(){
+    update("🎤 錄音中...");
+    
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096,1,1);
+
+    let chunks=[];
+    let maxAmp=0;
+
+    processor.onaudioprocess = e=>{
+        let data = e.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(data));
+        for(let i=0;i<data.length;i++){
+            if(Math.abs(data[i])>maxAmp) maxAmp=Math.abs(data[i]);
+        }
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+
+    await sleep(15000);
+
+    stream.getTracks().forEach(t=>t.stop());
+    processor.disconnect();
+
+    document.getElementById("volume").innerText="音量:"+maxAmp.toFixed(3);
+
+    if(maxAmp < 0.02){
+        update("🔇 太安靜，跳過");
+        return;
+    }
+
+    const wav = createWav(chunks,44100);
+
+    update("🔍 辨識中...");
+
+    const res = await fetchACR(wav);
+    if(!res) return;
+
+    const song = res.metadata.music[0].title;
+    const artist = res.metadata.music[0].artists[0].name;
+
+    const key = song + artist;
+
+    if(key === currentSong){
+        update("🎵 同一首歌");
+        return;
+    }
+
+    currentSong = key;
+    update("🎵 "+song+" - "+artist);
+
+    const lrc = await fetchLyrics(song,artist);
+    if(!lrc){
+        update("❌ 沒歌詞");
+        return;
+    }
+
+    lyricsData = parseLRC(lrc);
+    startTime = Date.now()/1000;
+
+    startLyrics();
+}
+
+function createWav(chunks,sampleRate){
+    let length = chunks.reduce((a,c)=>a+c.length,0);
+    let buffer = new ArrayBuffer(44+length*2);
+    let view = new DataView(buffer);
+
+    let offset=44;
+    const gain = 4;
+
+    for(let chunk of chunks){
+        for(let i=0;i<chunk.length;i++){
+            let s = Math.max(-1,Math.min(1,chunk[i]*gain));
+            view.setInt16(offset, s*0x7fff, true);
+            offset+=2;
+        }
+    }
+    return new Blob([view],{type:'audio/wav'});
+}
+
+async function fetchACR(blob){
+    try{
+        const ts = Math.floor(Date.now()/1000).toString();
+        const sign = CryptoJS.enc.Base64.stringify(
+            CryptoJS.HmacSHA1(
+                ["POST","/v1/identify",CONFIG.access_key,"audio","1",ts].join("\n"),
+                CONFIG.access_secret
+            )
+        );
+
+        const fd = new FormData();
+        fd.append("audio",blob);
+        fd.append("access_key",CONFIG.access_key);
+        fd.append("data_type","audio");
+        fd.append("signature_version","1");
+        fd.append("signature",sign);
+        fd.append("timestamp",ts);
+
+        const r = await fetch(`https://${CONFIG.host}/v1/identify`,{method:"POST",body:fd});
+        const j = await r.json();
+
+        if(j.status.code!==0){
+            update("❌ 辨識失敗 ("+j.status.code+")");
+            return null;
+        }
+        return j;
+    }catch(e){
+        update("錯誤:"+e);
+        return null;
+    }
+}
+
+// 簡易歌詞 API（無時間軸）
+async function fetchLyrics(song,artist){
+    try{
+        const res = await fetch(`https://api.lyrics.ovh/v1/${artist}/${song}`);
+        const data = await res.json();
+        return data.lyrics;
+    }catch{
+        return null;
+    }
+}
+
+function parseLRC(text){
+    let lines = text.split("\n");
+    let result=[];
+    let time=0;
+
+    for(let l of lines){
+        result.push({time:time,text:l});
+        time+=3;
+    }
+    return result;
+}
+
+function startLyrics(){
+    const el = document.getElementById("lyrics");
+
+    setInterval(()=>{
+        let t = Date.now()/1000 - startTime;
+
+        let current = lyricsData.findLast(l=>l.time<=t);
+
+        if(!current) return;
+
+        el.innerHTML = lyricsData.map(l=>{
+            return `<div class="${l===current?'active':'line'}">${l.text}</div>`;
+        }).join("");
+    },500);
+}
+
+function update(t){
+    document.getElementById("status").innerText=t;
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+</script></body>
 </html>
